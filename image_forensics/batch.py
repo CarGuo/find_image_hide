@@ -85,6 +85,8 @@ def analyze_directory(
 
     results: list[dict[str, Any]] = []
     if total == 0:
+        if progress_cb:
+            progress_cb(0, 0, {"phase": "no_images"})
         summary = {
             "tool_name": "Image Forensics Inspector",
             "schema_version": "0.1.0",
@@ -100,6 +102,9 @@ def analyze_directory(
         return summary
 
     if workers and workers > 1:
+        # 立即把 total 报给 UI（done=0），让前端进度条尽早能渲染
+        if progress_cb:
+            progress_cb(0, total, {"phase": "starting", "total": total})
         with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(_analyze_one, t): t for t in tasks}
             done = 0
@@ -110,8 +115,16 @@ def analyze_directory(
                 if progress_cb:
                     progress_cb(done, total, res)
     else:
+        if progress_cb:
+            progress_cb(0, total, {"phase": "starting", "total": total})
         done = 0
         for t in tasks:
+            # 提前广播一次"正在分析当前文件"的脉搏，让前端能显示文件名
+            if progress_cb:
+                progress_cb(done, total, {
+                    "phase": "analyzing",
+                    "image_path": t[0],
+                })
             res = _analyze_one(t)
             done += 1
             results.append(res)

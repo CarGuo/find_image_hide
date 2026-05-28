@@ -56,8 +56,8 @@ def analyze_ela(path: Path, vis_dir: Path, quality: int = 90, scale: float = 15.
         evidence.append({
             "module": "ela",
             "severity": "info",
-            "title": "ELA shows uneven error levels",
-            "description": "Block-wise ELA error levels vary significantly across the image, which may suggest pasted regions or local re-encoding. ELA can produce false positives on textured / smooth boundaries.",
+            "title": "ELA 显示误差水平不均匀",
+            "description": "图像中分块 ELA 误差水平差异显著，可能暗示存在粘贴区域或局部重新编码。ELA 在纹理与平滑区域的边界处可能产生误报。",
             "confidence": 0.4,
         })
 
@@ -71,8 +71,8 @@ def analyze_ela(path: Path, vis_dir: Path, quality: int = 90, scale: float = 15.
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "ELA is a heuristic visualization aid; bright regions are not proof of tampering.",
-            "Smooth regions, sharp edges, and texture differences naturally produce ELA contrast.",
-            "Re-saving an entire image at any quality erases ELA traces.",
+            "ELA 只是一种启发式可视化辅助手段，亮区不能直接当作篡改证据。",
+            "平滑区域、锐利边缘以及不同纹理本身就会产生 ELA 对比度。",
+            "把整张图重新存一次（任意质量）就会抹掉 ELA 痕迹。",
         ],
     }

@@ -107,16 +107,16 @@ def analyze_fft(path: Path, vis_dir: Path) -> dict[str, Any]:
         evidence.append({
             "module": "fft",
             "severity": "warning",
-            "title": f"{sp} symmetric peak pair(s) found",
-            "description": "Symmetric high-energy peaks in the FFT spectrum can indicate periodic signals (such as scanner moire, halftone, or potentially a frequency-domain watermark). Natural textures and JPEG artifacts can also create such patterns.",
+            "title": f"发现 {sp} 对对称尖峰",
+            "description": "FFT 频谱中的对称高能尖峰可能表明存在周期性信号（例如扫描莫尔条纹、半色调，或可能的频域水印）。自然纹理和 JPEG 伪影也可能产生此类模式。",
             "confidence": 0.5,
         })
     if pc > 1000:
         evidence.append({
             "module": "fft",
             "severity": "info",
-            "title": f"{pc} high-frequency outliers detected",
-            "description": "The number of frequency outliers above background+6\u03c3 is higher than typical. This is heuristic and can be caused by sharp edges, repeating patterns, or compression artifacts.",
+            "title": f"检测到 {pc} 个高频离群点",
+            "description": "高于背景+6\u03c3 的频率离群点数量超出正常水平。该判断为启发式结果，可能由锐利边缘、重复图案或压缩伪影引起。",
             "confidence": 0.3,
         })
 
@@ -133,7 +133,7 @@ def analyze_fft(path: Path, vis_dir: Path) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "FFT peaks can be caused by natural patterns, scan moire, JPEG blocking, or genuine watermarks.",
-            "Absence of peaks does not prove the image is unwatermarked.",
+            "FFT 频谱中的尖峰可能由自然纹理、扫描莫尔条纹、JPEG 块效应或真实水印引起，无法仅凭尖峰断定来源。",
+            "没有看到尖峰也并不能证明图像没有水印。",
         ],
     }

@@ -7,6 +7,44 @@ from typing import Any
 
 from PIL import ExifTags, Image
 
+try:
+    from iptcinfo3 import IPTCInfo  # type: ignore
+    _HAS_IPTC = True
+except Exception:
+    _HAS_IPTC = False
+
+# IPTC IIM 数字 tag → 语义名
+_IPTC_TAG_MAP = {
+    "by-line": "Creator",
+    "by-line title": "CreatorJobTitle",
+    "credit": "Credit",
+    "source": "Source",
+    "copyright notice": "CopyrightNotice",
+    "rights usage terms": "RightsUsageTerms",
+    "contact": "Contact",
+    "object name": "Title",
+    "caption/abstract": "Description",
+    "keywords": "Keywords",
+    "special instructions": "Instructions",
+}
+
+# XMP-PLUS / dc / xmpRights / Photoshop 关心的版权字段（小写匹配）
+_XMP_COPYRIGHT_KEYS = {
+    "rights": "dc:rights",
+    "creator": "dc:creator",
+    "usageterms": "xmpRights:UsageTerms",
+    "webstatement": "xmpRights:WebStatement",
+    "marked": "xmpRights:Marked",
+    "credit": "photoshop:Credit",
+    "source": "photoshop:Source",
+    "copyrightowner": "plus:CopyrightOwner",
+    "licensorurl": "plus:LicensorURL",
+    "licensor": "plus:Licensor",
+    "imagecreator": "plus:ImageCreator",
+    "modelreleasestatus": "plus:ModelReleaseStatus",
+    "minorrelevantmodelagedisclosure": "plus:MinorRelevantModelAgeDisclosure",
+}
+
 AI_KEYWORDS = [
     "OpenAI", "ChatGPT", "DALL-E", "DALL\u00b7E", "GPT-4o", "GPT Image",
     "Google", "Gemini", "Imagen", "DeepMind", "SynthID",
@@ -173,6 +211,109 @@ def _scan_stock_hits(raw: dict[str, Any]) -> list[dict[str, Any]]:
     return hits
 
 
+def _read_iptc_full(path: Path) -> dict[str, Any]:
+    """Read full IPTC IIM block via iptcinfo3 if available."""
+    out: dict[str, Any] = {}
+    if not _HAS_IPTC:
+        return out
+    try:
+        info = IPTCInfo(str(path), force=True)
+        for raw_key, semantic in _IPTC_TAG_MAP.items():
+            try:
+                v = info[raw_key]
+            except Exception:
+                continue
+            if not v:
+                continue
+            if isinstance(v, list):
+                vals = [_stringify(x) for x in v if x]
+                if vals:
+                    out[semantic] = vals if len(vals) > 1 else vals[0]
+            else:
+                s = _stringify(v)
+                if s:
+                    out[semantic] = s
+    except Exception:
+        pass
+    return out
+
+
+def _extract_xmp_copyright(xmp_blob: Any) -> dict[str, Any]:
+    """Pull the dc:rights / xmpRights:* / photoshop:* / plus:* copyright fields
+    out of a XMP packet (string or nested dict from PIL.getxmp())."""
+    out: dict[str, Any] = {}
+    blob_text = ""
+    if isinstance(xmp_blob, dict):
+        for path, value in _walk_fields(xmp_blob):
+            tail = path.split(".")[-1].lower().strip()
+            if tail in _XMP_COPYRIGHT_KEYS and value:
+                out.setdefault(_XMP_COPYRIGHT_KEYS[tail], value)
+        blob_text = str(xmp_blob)
+    else:
+        blob_text = str(xmp_blob or "")
+
+    if blob_text:
+        # 兜底：用正则从 XMP 文本里抓 dc:rights/xmpRights:UsageTerms 等
+        patterns = {
+            "dc:rights": r"<dc:rights>.*?<rdf:li[^>]*>(.*?)</rdf:li>",
+            "dc:creator": r"<dc:creator>.*?<rdf:li[^>]*>(.*?)</rdf:li>",
+            "xmpRights:UsageTerms": r"<xmpRights:UsageTerms>.*?<rdf:li[^>]*>(.*?)</rdf:li>",
+            "xmpRights:WebStatement": r'xmpRights:WebStatement="([^"]+)"',
+            "xmpRights:Marked": r'xmpRights:Marked="([^"]+)"',
+            "photoshop:Credit": r'photoshop:Credit="([^"]+)"',
+            "photoshop:Source": r'photoshop:Source="([^"]+)"',
+            "plus:LicensorURL": r"<plus:LicensorURL[^>]*>([^<]+)</plus:LicensorURL>",
+            "plus:CopyrightOwnerName": r"<plus:CopyrightOwnerName[^>]*>([^<]+)</plus:CopyrightOwnerName>",
+        }
+        for label, pat in patterns.items():
+            try:
+                m = re.search(pat, blob_text, flags=re.IGNORECASE | re.DOTALL)
+                if m:
+                    val = m.group(1).strip()
+                    if val and label not in out:
+                        out[label] = val
+            except Exception:
+                pass
+    return out
+
+
+def _build_copyright_summary(
+    exif: dict[str, Any], iptc: dict[str, Any], xmp_cr: dict[str, Any]
+) -> dict[str, Any]:
+    """Aggregate the canonical copyright fields across EXIF + IPTC + XMP-PLUS
+    into a single, easy-to-render summary."""
+    summary: dict[str, Any] = {}
+    # EXIF Copyright / Artist
+    if exif:
+        for key in ("Copyright", "Artist"):
+            v = exif.get(key)
+            if v:
+                summary.setdefault(f"exif.{key}", v)
+    # IPTC
+    for key in ("CopyrightNotice", "Creator", "Credit", "Source", "RightsUsageTerms", "Contact"):
+        v = iptc.get(key)
+        if v:
+            summary[f"iptc.{key}"] = v
+    # XMP-PLUS
+    for k, v in xmp_cr.items():
+        if v:
+            summary[f"xmp.{k}"] = v
+    has_explicit = any(
+        k.endswith(".CopyrightNotice")
+        or k.endswith(".Copyright")
+        or k.endswith(":rights")
+        or k.endswith(":UsageTerms")
+        or k.endswith(":CopyrightOwnerName")
+        or k.endswith(":LicensorURL")
+        for k in summary.keys()
+    )
+    return {
+        "fields": summary,
+        "has_explicit_copyright": has_explicit,
+        "field_count": len(summary),
+    }
+
+
 def collect_metadata(path: Path) -> dict[str, Any]:
     path = Path(path)
     result: dict[str, Any] = {
@@ -213,6 +354,29 @@ def collect_metadata(path: Path) -> dict[str, Any]:
                 pass
     except Exception as exc:
         result["error"] = f"metadata_failed: {exc}"
+
+    # --- IPTC IIM 完整字段（iptcinfo3） ---
+    iptc_full: dict[str, Any] = {}
+    try:
+        iptc_full = _read_iptc_full(path)
+    except Exception:
+        iptc_full = {}
+    if iptc_full:
+        result["has_iptc"] = True
+        result["raw"]["iptc_full"] = iptc_full
+
+    # --- XMP-PLUS / dc / xmpRights / photoshop 版权字段 ---
+    xmp_copyright: dict[str, Any] = {}
+    try:
+        xmp_copyright = _extract_xmp_copyright(result["raw"].get("xmp"))
+    except Exception:
+        xmp_copyright = {}
+    if xmp_copyright:
+        result["raw"]["xmp_copyright"] = xmp_copyright
+
+    # --- 版权字段汇总 ---
+    exif_block = result["raw"].get("exif", {}) if isinstance(result["raw"].get("exif"), dict) else {}
+    result["copyright_summary"] = _build_copyright_summary(exif_block, iptc_full, xmp_copyright)
 
     blob = str(result["raw"])
     suspicious: list[str] = []

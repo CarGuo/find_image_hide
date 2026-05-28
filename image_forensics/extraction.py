@@ -206,12 +206,12 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
         evidence.append({
             "module": "extraction",
             "severity": "warning",
-            "title": f"{trailing['trailing_bytes']} trailing bytes after image end",
+            "title": f"图像数据结束后存在 {trailing['trailing_bytes']} 字节的尾随数据",
             "description": (
-                f"The {trailing.get('format')} stream ends at offset {trailing.get('image_end_offset')}, "
-                f"but the file has {trailing['file_size']} bytes. "
-                f"The extra data may hide an appended payload (zip, archive, key, or text). "
-                f"First bytes (hex): {trailing['preview_hex'][:80]}"
+                f"{trailing.get('format')} 数据流在偏移 {trailing.get('image_end_offset')} 处结束，"
+                f"但整个文件大小为 {trailing['file_size']} 字节。"
+                f"多出的数据可能隐藏了被附加的载荷（zip、压缩包、密钥或文本）。"
+                f"起始字节（十六进制）：{trailing['preview_hex'][:80]}"
             ),
             "confidence": 0.85,
         })
@@ -219,8 +219,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
             evidence.append({
                 "module": "extraction",
                 "severity": "error",
-                "title": "Foreign file format detected after image end",
-                "description": "Magic numbers found in the trailing data: "
+                "title": "图像结尾之后检测到外来文件格式",
+                "description": "在尾随数据中发现了文件魔数：" 
                                + ", ".join(f"{h['format']}@+{h['offset']}" for h in trailing["magic_in_trailing"]),
                 "confidence": 0.95,
             })
@@ -230,8 +230,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
             evidence.append({
                 "module": "extraction",
                 "severity": "info",
-                "title": "Hidden printable text after image end",
-                "description": "Plaintext recovered from the trailing region:\n" + sample_text[:400],
+                "title": "图像结尾之后存在隐藏的可打印文本",
+                "description": "从尾随区域恢复出的明文：\n" + sample_text[:400],
                 "confidence": 0.7,
             })
 
@@ -243,8 +243,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
             evidence.append({
                 "module": "extraction",
                 "severity": "warning",
-                "title": f"LSB bitstream contains foreign magic ({s['channel_order']}, bit {s['bit_index']}, {s['bit_order']}-endian)",
-                "description": "Found file-format signatures inside the LSB-extracted bitstream: "
+                "title": f"LSB 位流中含有外来文件魔数（通道 {s['channel_order']}，第 {s['bit_index']} 位，{s['bit_order']} 字节序）",
+                "description": "在 LSB 提取的位流中发现了文件格式签名：" 
                                + ", ".join(f"{h['format']}@+{h['offset']}" for h in s["magic_hits"]),
                 "confidence": 0.8,
             })
@@ -261,8 +261,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
                 evidence.append({
                     "module": "extraction",
                     "severity": "warning",
-                    "title": f"Sensitive keyword found in LSB stream ({s['channel_order']}, bit {s['bit_index']}, {s['bit_order']})",
-                    "description": "Hidden text payload contains a sensitive keyword (flag{}, password, BEGIN, api_key, ...): "
+                    "title": f"LSB 位流中发现敏感关键词（通道 {s['channel_order']}，第 {s['bit_index']} 位，{s['bit_order']} 字节序）",
+                    "description": "隐藏的文本载荷中包含敏感关键词（flag{}、password、BEGIN、api_key 等）：" 
                                    + (sample[:200] + ("..." if len(sample) > 200 else "")),
                     "confidence": 0.75,
                 })
@@ -273,8 +273,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
                 evidence.append({
                     "module": "extraction",
                     "severity": "info",
-                    "title": f"Printable strings found in LSB stream ({s['channel_order']}, bit {s['bit_index']}, {s['bit_order']})",
-                    "description": "Possible text payload: " + (sample[:160] + ("..." if len(sample) > 160 else "")),
+                    "title": f"LSB 位流中发现可打印字符串（通道 {s['channel_order']}，第 {s['bit_index']} 位，{s['bit_order']} 字节序）",
+                    "description": "可能的文本载荷：" + (sample[:160] + ("..." if len(sample) > 160 else "")),
                     "confidence": 0.4,
                 })
                 interesting_streams.append(s)
@@ -285,8 +285,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
         evidence.append({
             "module": "extraction",
             "severity": "warning",
-            "title": "ZIP signature found inside file body",
-            "description": "A 'PK\\x03\\x04' header was found inside the file, which usually indicates an embedded zip / docx / jar payload (polyglot or appended archive).",
+            "title": "文件主体内部发现 ZIP 签名",
+            "description": "在文件内部发现了 'PK\\x03\\x04' 头，这通常意味着嵌入了 zip / docx / jar 载荷（多格式拼接文件或被附加的压缩包）。",
             "confidence": 0.7,
         })
 
@@ -305,8 +305,8 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "LSB extraction tries common bit/channel/byteorder combinations (zsteg-style) but is not exhaustive.",
-            "Encrypted or compressed payloads will not produce printable strings or magic numbers.",
-            "JPEG and other lossy formats are not analyzed in the LSB extractor (compression destroys LSBs).",
+            "LSB 提取尝试了 zsteg 风格的常见 比特位 / 通道 / 字节序 组合，但并不穷尽所有方案。",
+            "如果隐藏数据被加密或压缩，将不会出现可读字符串或文件魔数，本工具检测不到。",
+            "JPEG 等有损格式不在 LSB 提取范围内（压缩本身就会破坏 LSB）。",
         ],
     }

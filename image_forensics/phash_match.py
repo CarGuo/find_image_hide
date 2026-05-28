@@ -194,8 +194,8 @@ def analyze_phash_match(path: Path, reference_dir: Path | None) -> dict[str, Any
         evidence_items.append({
             "module": "phash_match",
             "severity": "warning" if m["distance"] <= DEFAULT_THRESHOLD else "info",
-            "title": f"Near-duplicate of reference: {m['reference']}",
-            "description": f"Hamming distance = {m['distance']} (<= {DEFAULT_THRESHOLD} considered the same image after laundering)",
+            "title": f"与参考图近似重复：{m['reference']}",
+            "description": f"汉明距离 = {m['distance']}（不超过阈值 {DEFAULT_THRESHOLD} 时视为经过洗稿处理后的同一张图像）",
             "confidence": round(1.0 - m["distance"] / 64.0, 3),
         })
 

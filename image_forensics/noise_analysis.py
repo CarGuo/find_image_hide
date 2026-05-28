@@ -56,8 +56,8 @@ def analyze_noise(path: Path, vis_dir: Path) -> dict[str, Any]:
         evidence.append({
             "module": "noise",
             "severity": "info",
-            "title": "Local noise inconsistency detected",
-            "description": "Local noise variance varies across the image more than usual. This can indicate splicing, heavy local editing, or non-uniform watermark embedding, but it can also occur in images with mixed flat and textured regions.",
+            "title": "检测到局部噪声不一致",
+            "description": "图像中各区域的局部噪声方差差异比正常情况更大。这可能表明存在拼接、严重的局部编辑或不均匀的水印嵌入，但在同时包含平坦和纹理区域的图像中也可能出现这种情况。",
             "confidence": 0.4,
         })
 
@@ -75,7 +75,7 @@ def analyze_noise(path: Path, vis_dir: Path) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "Noise inconsistency can be caused by natural texture changes, depth of field, or in-camera processing.",
-            "This module is heuristic and is not a definitive splicing detector.",
+            "噪声不一致也可能由自然纹理变化、景深虚化或相机内部处理（去噪 / 锐化）引起。",
+            "本模块只是启发式判断，不是严格意义上的拼接 / 篡改鉴定器。",
         ],
     }

@@ -27,6 +27,11 @@ analysis_output/
 _check_html/
 tools/test_images/
 tools/phash_reference/
+tools/regression_results.json
+
+# SynthID enhance: cloned upstream sources + binary codebooks (re-fetched on demand)
+.cache/
+artifacts/
 
 # Local secrets / overrides
 .env

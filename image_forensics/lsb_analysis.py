@@ -101,16 +101,16 @@ def analyze_lsb(path: Path, vis_dir: Path, is_lossy: bool) -> dict[str, Any]:
         evidence.append({
             "module": "lsb",
             "severity": "warning",
-            "title": "LSB plane appears highly random",
-            "description": "The least-significant bit plane has near-maximal entropy and very low spatial correlation, which is unusual for natural images. This is a classic heuristic for LSB steganography in lossless formats (PNG/BMP).",
+            "title": "LSB 位平面呈现高度随机",
+            "description": "最低有效位平面的熵接近最大值，且空间相关性非常低，这在自然图像中并不常见。此现象是无损格式（PNG/BMP）中 LSB 隐写的经典启发式特征。",
             "confidence": 0.55,
         })
     if is_lossy:
         evidence.append({
             "module": "lsb",
             "severity": "info",
-            "title": "LSB analysis on lossy format",
-            "description": "The image is a lossy format (e.g. JPEG). LSB analysis is unreliable here because compression already randomizes low bits.",
+            "title": "在有损格式上做 LSB 分析",
+            "description": "图像为有损格式（如 JPEG）。此情况下 LSB 分析不可靠，因为压缩本身已经会随机化低位比特。",
             "confidence": 0.2,
         })
 
@@ -126,7 +126,7 @@ def analyze_lsb(path: Path, vis_dir: Path, is_lossy: bool) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "Lossy formats (JPEG/WebP-lossy) destroy or randomize LSBs; LSB scoring is unreliable for them.",
-            "High entropy alone does not prove steganography; smooth gradients with dithering or noise can also produce high LSB entropy.",
+            "JPEG / WebP-lossy 等有损格式会破坏或随机化 LSB，对它们做 LSB 评分并不可靠。",
+            "高熵本身并不能证明存在隐写：带抖动的平滑渐变或高频噪声纹理也会让 LSB 熵显得很高。",
         ],
     }

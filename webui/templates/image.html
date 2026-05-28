@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>图片详情</title>
-  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}" />
 </head>
 <body>
   <header class="topbar">
@@ -55,6 +55,6 @@
     const JOB_ID = "{{ job_id }}";
     const SLUG = "{{ slug }}";
   </script>
-  <script src="/static/image.js"></script>
+  <script src="/static/image.js?v={{ asset_version }}"></script>
 </body>
 </html>

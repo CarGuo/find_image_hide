@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>扫描结果 - {{ job_id }}</title>
-  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}" />
 </head>
 <body>
   <header class="topbar">
@@ -14,7 +14,21 @@
 
   <main class="container">
     <section class="card" id="job-info">
-      <div id="progress-line">加载中...</div>
+      <div class="job-progress">
+        <div class="job-progress-head">
+          <span class="job-status-pill" id="job-status-pill">正在准备扫描…</span>
+          <span class="job-progress-meta" id="job-progress-meta">读取目录中…</span>
+        </div>
+        <div class="progress-track">
+          <div class="progress-fill" id="progress-fill" style="width:0%"></div>
+          <div class="progress-shimmer" id="progress-shimmer"></div>
+          <div class="progress-percent" id="progress-percent">0%</div>
+        </div>
+        <div class="job-progress-foot">
+          <span id="job-current-file" class="job-current-file"></span>
+          <span id="job-elapsed" class="muted small"></span>
+        </div>
+      </div>
       <div id="stats" class="stats"></div>
     </section>
 
@@ -23,28 +37,22 @@
         <input type="text" id="filter" placeholder="按文件名筛选..." />
         <select id="risk-filter">
           <option value="">全部风险等级</option>
-          <option value="HIGH">HIGH</option>
-          <option value="MEDIUM">MEDIUM</option>
-          <option value="LOW">LOW</option>
-          <option value="UNKNOWN">UNKNOWN</option>
-          <option value="ERROR">ERROR</option>
+          <option value="HIGH">高风险</option>
+          <option value="MEDIUM">中风险</option>
+          <option value="LOW">低风险</option>
+          <option value="UNKNOWN">未知</option>
+          <option value="ERROR">出错</option>
         </select>
       </div>
       <table class="results">
         <thead>
           <tr>
-            <th>#</th>
-            <th>文件</th>
-            <th>格式</th>
-            <th>尺寸</th>
-            <th>风险</th>
-            <th>置信度</th>
-            <th>AI Provenance</th>
-            <th>SPA 嵌入率</th>
-            <th>χ² P</th>
-            <th>尾部字节</th>
-            <th>提取分</th>
-            <th>操作</th>
+            <th style="width:40px">#</th>
+            <th style="width:200px">文件</th>
+            <th style="width:90px">综合风险</th>
+            <th style="width:70px">置信度</th>
+            <th>综合结论 / 关键证据</th>
+            <th style="width:80px">操作</th>
           </tr>
         </thead>
         <tbody id="results-body"></tbody>
@@ -55,6 +63,6 @@
   <script>
     const JOB_ID = "{{ job_id }}";
   </script>
-  <script src="/static/job.js"></script>
+  <script src="/static/job.js?v={{ asset_version }}"></script>
 </body>
 </html>

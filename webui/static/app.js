@@ -282,3 +282,170 @@ if (dzPicker) {
     dzPicker.value = "";
   });
 }
+
+
+// ----------------- SynthID 增强（方案 B：一键启用 reverse-SynthID 官方包） -----------------
+
+const synthidSetupBtn = document.getElementById("synthid-setup-btn");
+const synthidStatusBtn = document.getElementById("synthid-status-btn");
+const synthidStatusEl = document.getElementById("synthid-status");
+const synthidLogEl = document.getElementById("synthid-log");
+
+let synthidPollTimer = null;
+let synthidConfirmEl = null;
+
+function renderSynthidStatus(data) {
+  if (!synthidStatusEl) return;
+  if (!data) {
+    synthidStatusEl.className = "status";
+    synthidStatusEl.textContent = "";
+    return;
+  }
+  const pkg = data.package_installed ? "✅ 已安装" : "⬜ 未安装";
+  const cb = data.codebook_present ? "✅ 已下载" : "⬜ 未下载";
+  const tail = " （codebook 路径：" + (data.codebook_path || "-") + "）";
+  let line = `官方 reverse-SynthID 包：${pkg}；codebook：${cb}${tail}`;
+  let css = "status";
+  // 从日志末尾几行嗅出"刚刚失败/异常"
+  const recentLog = (data.log_tail || []).slice(-8).join("\n").toLowerCase();
+  const finishedWithFailure =
+    !data.running
+    && (!data.package_installed || !data.codebook_present)
+    && (recentLog.includes("命令失败")
+      || recentLog.includes("异常")
+      || recentLog.includes("失败")
+      || recentLog.includes("error"));
+
+  if (data.running) {
+    line = "⏳ 正在后台安装 reverse-SynthID + 下载 codebook（约 220MB），请稍候…  " + line;
+  } else if (data.package_installed && data.codebook_present) {
+    line = "🎉 一切就绪！每张图的「AI 来源凭证」 tab 现在可以使用官方 reverse-SynthID 反推。" + tail;
+  } else if (finishedWithFailure) {
+    css = "status error";
+    line = "❌ 上次安装失败：" + line + "  请查看下方日志的诊断提示，修复后再点「一键启用」重试。";
+  }
+  synthidStatusEl.className = css;
+  synthidStatusEl.textContent = line;
+
+  // 日志面板永远可见（哪怕暂时为空），避免按下后看上去"啥也没发生"
+  if (synthidLogEl) {
+    synthidLogEl.style.display = "block";
+    const log = (data.log_tail || []).join("\n");
+    synthidLogEl.textContent = log
+      || (data.running
+        ? "（安装刚刚启动，日志即将出现…）"
+        : "（暂无安装日志。点击上方按钮可触发一键安装。）");
+    synthidLogEl.scrollTop = synthidLogEl.scrollHeight;
+  }
+}
+
+async function fetchSynthidStatus() {
+  try {
+    const resp = await fetch("/api/synthid_enhance/status");
+    if (!resp.ok) throw new Error("HTTP " + resp.status);
+    const data = await resp.json();
+    renderSynthidStatus(data);
+    return data;
+  } catch (e) {
+    if (synthidStatusEl) {
+      synthidStatusEl.className = "status error";
+      synthidStatusEl.textContent = "状态查询失败：" + e.message;
+    }
+    return null;
+  }
+}
+
+function startSynthidPolling() {
+  if (synthidPollTimer) return;
+  synthidPollTimer = setInterval(async () => {
+    const data = await fetchSynthidStatus();
+    if (!data || !data.running) {
+      clearInterval(synthidPollTimer);
+      synthidPollTimer = null;
+      if (synthidSetupBtn) synthidSetupBtn.disabled = false;
+    }
+  }, 2000);
+}
+
+async function triggerSynthidSetup() {
+  if (synthidSetupBtn) synthidSetupBtn.disabled = true;
+  if (synthidStatusEl) {
+    synthidStatusEl.className = "status";
+    synthidStatusEl.textContent = "⏳ 正在请求后端启动安装…";
+  }
+  if (synthidLogEl) {
+    synthidLogEl.style.display = "block";
+    synthidLogEl.textContent = "（提交安装请求中…）";
+  }
+  try {
+    const resp = await fetch("/api/synthid_enhance/setup", { method: "POST" });
+    const data = await resp.json();
+    if (!resp.ok) throw new Error(data.error || ("HTTP " + resp.status));
+    renderSynthidStatus(data);
+    startSynthidPolling();
+  } catch (e) {
+    if (synthidStatusEl) {
+      synthidStatusEl.className = "status error";
+      synthidStatusEl.textContent = "启动失败：" + e.message;
+    }
+    if (synthidSetupBtn) synthidSetupBtn.disabled = false;
+  }
+}
+
+function showSynthidConfirm() {
+  // IDE 内嵌 webview 对 window.confirm 兼容性差，改用内联确认 UI
+  if (synthidConfirmEl) return;
+  if (!synthidStatusEl) return;
+  synthidConfirmEl = document.createElement("div");
+  synthidConfirmEl.className = "synthid-confirm";
+  synthidConfirmEl.innerHTML = `
+    <div class="synthid-confirm-text">
+      ⚠️ 即将执行：
+      <code>pip install git+https://github.com/aloshdenny/reverse-SynthID.git</code>
+      并下载约 <strong>220 MB</strong> codebook 到
+      <code>artifacts/spectral_codebook_v4.npz</code>。<br>
+      全部写入当前 Python 环境，仅在本机运行。是否继续？
+    </div>
+    <div class="synthid-confirm-actions">
+      <button type="button" class="primary synthid-confirm-yes">确认安装</button>
+      <button type="button" class="primary synthid-confirm-no" style="background:#888">取消</button>
+    </div>
+  `;
+  synthidStatusEl.parentElement.insertBefore(synthidConfirmEl, synthidStatusEl);
+  synthidConfirmEl.querySelector(".synthid-confirm-yes").addEventListener("click", async () => {
+    synthidConfirmEl.remove();
+    synthidConfirmEl = null;
+    await triggerSynthidSetup();
+  });
+  synthidConfirmEl.querySelector(".synthid-confirm-no").addEventListener("click", () => {
+    synthidConfirmEl.remove();
+    synthidConfirmEl = null;
+    if (synthidSetupBtn) synthidSetupBtn.disabled = false;
+  });
+}
+
+if (synthidStatusBtn) {
+  synthidStatusBtn.addEventListener("click", () => fetchSynthidStatus());
+}
+
+if (synthidSetupBtn) {
+  synthidSetupBtn.addEventListener("click", async () => {
+    // 先看一下当前后端状态：已经在跑就直接进入轮询
+    const cur = await fetchSynthidStatus();
+    if (cur && cur.running) {
+      synthidSetupBtn.disabled = true;
+      startSynthidPolling();
+      return;
+    }
+    if (cur && cur.package_installed && cur.codebook_present) {
+      // 已经装好，无需重复
+      if (synthidStatusEl) {
+        synthidStatusEl.className = "status";
+        synthidStatusEl.textContent = "🎉 已经全部就绪，无需重复安装。";
+      }
+      return;
+    }
+    showSynthidConfirm();
+  });
+  fetchSynthidStatus();
+}

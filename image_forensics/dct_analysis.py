@@ -70,7 +70,7 @@ def analyze_dct(path: Path, vis_dir: Path) -> dict[str, Any]:
             "dct_anomaly_score": 0.0,
             "risk_level": "UNKNOWN",
             "evidence_items": [],
-            "limitations": ["Image too small for 8x8 DCT analysis."],
+            "limitations": ["图像太小，不足以做 8x8 DCT 分析。"],
         }
 
     blocks = _block_dct(y)
@@ -148,16 +148,16 @@ def analyze_dct(path: Path, vis_dir: Path) -> dict[str, Any]:
         evidence.append({
             "module": "dct",
             "severity": "info",
-            "title": "DCT mid-frequency anomaly heuristic triggered",
-            "description": "Mid-frequency DCT statistics deviate from typical natural images. This may indicate watermarking, heavy editing, or simply unusual image content.",
+            "title": "DCT 中频异常启发式被触发",
+            "description": "中频 DCT 统计量与典型自然图像存在偏差。这可能意味着图像被加入了水印、经过大量编辑，或仅仅是图像内容比较特殊。",
             "confidence": 0.4,
         })
     if ks_stat > 0.15:
         evidence.append({
             "module": "dct",
             "severity": "info",
-            "title": f"DCT mid-band K-S test deviates from Laplace (D={ks_stat:.3f}, p={ks_p:.3g})",
-            "description": "Natural-image AC DCT coefficients are Laplace-distributed. A large K-S statistic suggests an additive / spread-spectrum watermark or heavy edit.",
+            "title": f"DCT 中频段 K-S 检验偏离拉普拉斯分布（D={ks_stat:.3f}, p={ks_p:.3g}）",
+            "description": "自然图像的 AC DCT 系数服从拉普拉斯分布。K-S 统计量偏大提示可能存在加性 / 扩频水印，或经过大量编辑。",
             "confidence": float(min(0.8, ks_stat * 2.0)),
         })
 
@@ -173,8 +173,8 @@ def analyze_dct(path: Path, vis_dir: Path) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "DCT here is recomputed from pixels; for non-JPEG inputs it does not equal the encoder coefficients.",
-            "JPEG compression itself biases mid/high frequency stats.",
-            "K-S vs Laplace is a heuristic; some natural images (e.g. text screenshots, low-detail) also deviate.",
+            "这里的 DCT 是从像素重新计算的；对非 JPEG 输入，它不等于编码器原生的 DCT 系数。",
+            "JPEG 压缩本身就会让中 / 高频统计偏移，不一定是隐写造成的。",
+            "K-S 与拉普拉斯分布的对比只是启发式方法；某些自然图像（例如纯文字截图、低细节图）也会显著偏离。",
         ],
     }

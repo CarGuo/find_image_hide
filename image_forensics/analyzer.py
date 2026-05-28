@@ -15,6 +15,7 @@ from .dct_analysis import analyze_dct
 from .ela import analyze_ela
 from .extraction import analyze_extraction
 from .fft_analysis import analyze_fft
+from .invisible_watermark_detect import analyze_invisible_watermark
 from .lsb_analysis import analyze_lsb
 from .metadata_analysis import collect_metadata
 from .noise_analysis import analyze_noise
@@ -108,8 +109,14 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         phash = {"status": "ERROR", "risk_level": "UNKNOWN", "phash_score": 0.0, "matches": [], "evidence_items": [], "error": str(exc)}
         errors.append(f"phash_match: {exc}")
 
+    try:
+        invisible_wm = analyze_invisible_watermark(input_path)
+    except Exception as exc:
+        invisible_wm = {"status": "ERROR", "risk_level": "UNKNOWN", "score": 0.0, "decoded": [], "evidence_items": [], "error": str(exc)}
+        errors.append(f"invisible_watermark: {exc}")
+
     report: dict[str, Any] = {
-        "schema_version": "0.2.0",
+        "schema_version": "0.3.0",
         "tool_name": "Image Forensics Inspector",
         "analysis_id": str(uuid.uuid4()),
         "created_at": datetime.now(timezone.utc).isoformat(),
@@ -124,6 +131,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         "extraction": ext,
         "ela": ela,
         "visible_watermark": visible_wm,
+        "invisible_watermark": invisible_wm,
         "phash_match": phash,
         "errors": errors,
     }
@@ -134,17 +142,45 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
     for module_name, module in (
         ("fft", fft), ("dct", dct), ("lsb", lsb), ("noise", noise),
         ("steganalysis", steg), ("extraction", ext), ("ela", ela),
-        ("visible_watermark", visible_wm), ("phash_match", phash),
+        ("visible_watermark", visible_wm), ("invisible_watermark", invisible_wm),
+        ("phash_match", phash),
     ):
         for item in module.get("evidence_items", []) or []:
             all_evidence.append({**item, "module": item.get("module", module_name)})
     if prov.get("status") and prov.get("status") != "NO_PROVENANCE_FOUND":
+        _PROV_CN = {
+            "VERIFIED_AI_GENERATED": "已验证：AI 生成",
+            "VERIFIED_AI_EDITED": "已验证：AI 编辑过",
+            "PROVENANCE_PRESENT_BUT_UNVERIFIED": "存在 C2PA 来源凭证但未通过签名校验",
+            "POSSIBLE_AI_BUT_UNVERIFIED": "元数据疑似 AI 生成但缺少可信凭证",
+        }
+        status_cn = _PROV_CN.get(prov["status"], prov["status"])
+        provs = prov.get("detected_providers") or []
+        provs_text = "、".join(provs) if provs else "无"
         all_evidence.append({
             "module": "ai_provenance",
             "severity": "info" if "VERIFIED" not in prov["status"] else "warning",
-            "title": f"AI provenance status: {prov['status']}",
-            "description": f"Detected providers: {prov.get('detected_providers')}",
+            "title": f"AI 来源溯源：{status_cn}",
+            "description": f"在元数据 / C2PA 中检测到的来源提供方：{provs_text}",
             "confidence": 0.5,
+        })
+
+    fp = (prov.get("synthid") or {}).get("frequency_probe") or {}
+    if fp.get("available") and fp.get("suspicion") in ("medium", "high"):
+        sev = "high" if fp["suspicion"] == "high" else "medium"
+        all_evidence.append({
+            "module": "ai_provenance",
+            "severity": sev,
+            "title": f"SynthID 频域启发式指纹：{fp['suspicion']} 可疑度",
+            "description": (
+                f"参考 reverse-SynthID 公布的 1024×1024 低频载频网格，"
+                f"绿通道 FFT 中候选 bin 平均能量 {fp.get('peak_ratio_mean'):.2f} 倍背景，"
+                f"P95 = {fp.get('peak_ratio_p95'):.2f} 倍，"
+                f"相位圆方差 {fp.get('phase_circular_variance'):.3f}（越小越像固定模板）。"
+                f"{fp.get('reason', '')}"
+                "—— 该指标仅作启发式提示，权威验证需走 Google 官方接口。"
+            ),
+            "confidence": 0.4 if sev == "medium" else 0.6,
         })
     report["evidence_items"] = all_evidence
 

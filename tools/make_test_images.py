@@ -112,6 +112,137 @@ def make_visible_watermark(base: Image.Image, out_path: Path, text: str = "Getty
     img.save(out_path, format="JPEG", quality=92)
 
 
+def make_full_iptc_copyright(base: Image.Image, out_path: Path) -> None:
+    """JPEG with a full IPTC IIM copyright record (CopyrightNotice / Creator /
+    Credit / Source / RightsUsageTerms / Contact). Demonstrates a properly
+    licensed stock photo's metadata."""
+    # 先写入一个带 EXIF 占位的 JPEG，iptcinfo3 在带元数据段的 JPEG 上才能稳定写入
+    base.convert("RGB").save(out_path, format="JPEG", quality=92)
+    try:
+        import piexif  # type: ignore
+        zeroth = {
+            piexif.ImageIFD.Software: b"Acme Stock Library 1.0",
+            piexif.ImageIFD.Artist: b"Jane Photographer",
+            piexif.ImageIFD.Copyright: b"(C) 2024 Acme Studio. All rights reserved.",
+        }
+        piexif.insert(piexif.dump({"0th": zeroth, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}), str(out_path))
+    except Exception:
+        pass
+    try:
+        from iptcinfo3 import IPTCInfo  # type: ignore
+        info = IPTCInfo(str(out_path), force=True)
+        # 注意：iptcinfo3 的 key 必须是 IIM 标准小写字段名，下面这些都是它支持的：
+        # 'copyright notice'、'by-line'、'by-line title'、'credit'、'source'、
+        # 'caption/abstract'、'object name'、'keywords'、'special instructions'。
+        # 'contact'、'rights usage terms' 不在 IIM IIM 标准里 → iptcinfo3 会抛
+        # KeyError。版权用法条款放到 'special instructions' 里写更兼容；
+        # 联系方式放到 'caption/abstract' 末尾。
+        info["copyright notice"] = "(C) 2024 Acme Studio. All rights reserved."
+        info["by-line"] = "Jane Photographer"
+        info["by-line title"] = "Senior Photographer"
+        info["credit"] = "Acme Stock"
+        info["source"] = "AcmeStock.com"
+        info["special instructions"] = (
+            "Editorial use only. No commercial use without written permission. "
+            "Contact: license@acmestock.com"
+        )
+        info["object name"] = "Sunset over the bay"
+        info["caption/abstract"] = (
+            "Properly licensed stock photo. Demonstrates a complete IPTC IIM record."
+        )
+        info["keywords"] = ["editorial", "licensed", "acmestock", "demo"]
+        info.save_as(str(out_path))
+        bak = Path(str(out_path) + "~")
+        if bak.exists():
+            try:
+                bak.unlink()
+            except Exception:
+                pass
+    except Exception as exc:
+        # 没装 iptcinfo3 时降级：直接打印警告 + 保留 EXIF 占位，不再污染文件尾部
+        # （之前会 append `[IPTC fallback] ...` 到 JPEG EOI 之后，反而被 extraction
+        # 模块当成尾部隐藏内容报警，违背"测试样本"的语义。）
+        print(f"[warn] iptcinfo3 unavailable, skipped IPTC for {out_path.name}: {exc}")
+
+
+def make_invisible_watermark(base: Image.Image, out_path: Path, payload: str = "ACME") -> None:
+    """Embed a real DwtDct invisible watermark via the invisible-watermark
+    library. The decoder in invisible_watermark_detect.py should later
+    surface the payload string as evidence."""
+    try:
+        import cv2  # type: ignore
+        from imwatermark import WatermarkEncoder  # type: ignore
+    except Exception as exc:
+        # 没装库时降级：保存普通 JPEG 并提示
+        base.convert("RGB").save(out_path, format="JPEG", quality=92)
+        with open(out_path, "ab") as fh:
+            fh.write(b"\n[invisible_watermark fallback] missing imwatermark/cv2: ")
+            fh.write(str(exc).encode("utf-8", errors="replace"))
+        return
+
+    rgb = np.asarray(base.convert("RGB"), dtype=np.uint8)
+    bgr = cv2.cvtColor(rgb, cv2.COLOR_RGB2BGR)
+    if min(bgr.shape[:2]) < 256:
+        # invisible-watermark 对小图不稳定，必要时放大
+        h, w = bgr.shape[:2]
+        scale = max(1.0, 256.0 / float(min(h, w)))
+        bgr = cv2.resize(bgr, (int(w * scale), int(h * scale)),
+                         interpolation=cv2.INTER_LANCZOS4)
+    enc = WatermarkEncoder()
+    payload_bytes = payload.encode("utf-8")[:4]  # 32-bit
+    if len(payload_bytes) < 4:
+        payload_bytes = payload_bytes + b"\x00" * (4 - len(payload_bytes))
+    enc.set_watermark("bytes", payload_bytes)
+    out = enc.encode(bgr, "dwtDct")
+    cv2.imwrite(str(out_path), out, [int(cv2.IMWRITE_JPEG_QUALITY), 92])
+
+
+def make_ai_forged_copyright(base: Image.Image, out_path: Path) -> None:
+    """Worst case: AI-generated image that *also* claims a fake copyright.
+    EXIF/IPTC/XMP all assert ownership, but PNG text chunks reveal
+    AI-generation parameters. The analyzer should flag both copyright fields
+    AND AI-keywords, demonstrating that copyright metadata is forgeable."""
+    img = base.convert("RGB")
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    img.save(out_path, format="JPEG", quality=92)
+    # 写假版权声明
+    try:
+        import piexif  # type: ignore
+        zeroth = {
+            piexif.ImageIFD.Artist: b"Totally Real Human Photographer",
+            piexif.ImageIFD.Copyright: b"(C) 2024 Definitely-Not-AI Studio. All rights reserved.",
+            piexif.ImageIFD.ImageDescription: (
+                b"Original photograph, hand-shot on Canon EOS R5. Not AI generated. "
+                b"prompt: cinematic landscape, masterpiece, Stable Diffusion XL, "
+                b"Steps: 30, Sampler: DPM++ 2M Karras"
+            ),
+            piexif.ImageIFD.Software: b"Adobe Photoshop 25.0",
+        }
+        exif_dict = {"0th": zeroth, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
+        piexif.insert(piexif.dump(exif_dict), str(out_path))
+    except Exception:
+        pass
+    # 再叠一层 IPTC 假版权
+    try:
+        from iptcinfo3 import IPTCInfo  # type: ignore
+        info = IPTCInfo(str(out_path), force=True)
+        info["copyright notice"] = "(C) 2024 Definitely-Not-AI Studio."
+        info["by-line"] = "Totally Real Human Photographer"
+        info["credit"] = "Original Work"
+        info["caption/abstract"] = (
+            "Cinematic landscape (prompt leaked: Stable Diffusion XL, Midjourney v6)."
+        )
+        info.save_as(str(out_path))
+        bak = Path(str(out_path) + "~")
+        if bak.exists():
+            try:
+                bak.unlink()
+            except Exception:
+                pass
+    except Exception:
+        pass
+
+
 def make_stock_metadata(base: Image.Image, out_path: Path) -> None:
     """JPEG with EXIF Artist/Copyright/Software pointing to a stock photo
     library - the *most* common copyright signature."""
@@ -204,6 +335,17 @@ def main() -> None:
         wm_base = make_natural(seed=21)
     make_visible_watermark(wm_base, OUT / "visible_watermark_getty.jpg",
                            text="Getty Images")
+    # 5 张主流图库品牌可见水印
+    brand_pairs = [
+        ("visible_watermark_shutterstock.jpg", "Shutterstock", 31),
+        ("visible_watermark_istock.jpg", "iStock by Getty Images", 32),
+        ("visible_watermark_unsplash.jpg", "Unsplash", 33),
+        ("visible_watermark_adobestock.jpg", "Adobe Stock", 34),
+        ("visible_watermark_alamy.jpg", "Alamy", 35),
+    ]
+    for fname, brand, seed in brand_pairs:
+        bb = Image.open(real_for_wm).convert("RGB") if real_for_wm.exists() else make_natural(seed=seed)
+        make_visible_watermark(bb, OUT / fname, text=brand)
 
     real_for_stock = OUT / "picsum_food.jpg"
     if real_for_stock.exists():
@@ -211,6 +353,30 @@ def main() -> None:
     else:
         stock_base = make_natural(seed=22)
     make_stock_metadata(stock_base, OUT / "stock_metadata_shutterstock.jpg")
+
+    # IPTC 完整版权例：合法授权图库的「正面教材」
+    iptc_base = (
+        Image.open(OUT / "picsum_landscape.jpg").convert("RGB")
+        if (OUT / "picsum_landscape.jpg").exists()
+        else make_natural(seed=41)
+    )
+    make_full_iptc_copyright(iptc_base, OUT / "iptc_full_copyright.jpg")
+
+    # invisible-watermark 真实嵌入例：DwtDct 32-bit "ACME" payload
+    inv_base = (
+        Image.open(OUT / "picsum_city.jpg").convert("RGB")
+        if (OUT / "picsum_city.jpg").exists()
+        else make_natural(seed=42)
+    )
+    make_invisible_watermark(inv_base, OUT / "invisible_watermark_dwtdct.jpg", payload="ACME")
+
+    # AI 改图后伪造版权声明攻击例：版权字段说"是我拍的"，但描述里漏了 prompt
+    ai_attack_base = (
+        Image.open(OUT / "picsum_portrait.jpg").convert("RGB")
+        if (OUT / "picsum_portrait.jpg").exists()
+        else make_natural(seed=43)
+    )
+    make_ai_forged_copyright(ai_attack_base, OUT / "ai_forged_copyright.jpg")
 
     ref_dir = OUT.parent / "phash_reference"
     make_phash_reference_set(ref_dir)

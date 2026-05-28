@@ -232,8 +232,8 @@ def analyze_visible_watermark(path: Path, vis_dir: Path) -> dict[str, Any]:
         evidence_items.append({
             "module": "visible_watermark",
             "severity": "warning" if h["match_type"] in ("stock_brand", "copyright_notice") else "info",
-            "title": f"Visible watermark token: {h['keyword']}",
-            "description": f"Region={h['region']}, context={h.get('context','')}",
+            "title": f"可见水印关键词：{h['keyword']}",
+            "description": f"区域={h['region']}，上下文={h.get('context','')}",
             "confidence": 0.9 if h["match_type"] == "stock_brand" else 0.6,
         })
 

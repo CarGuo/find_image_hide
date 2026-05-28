@@ -39,9 +39,27 @@ function renderOverview(report) {
   $("#title").textContent = inp.file_name || "Image";
   $("#preview-img").src = PREVIEW;
 
+  const moduleNameCn = {
+    extraction: "隐藏内容提取",
+    steganalysis: "隐写检测（卡方/SPA）",
+    fft: "FFT 频域",
+    dct: "DCT 频域",
+    lsb: "LSB 位平面",
+    noise: "噪声残差",
+    ela: "ELA 误差",
+    metadata: "元数据 / 图库黑名单",
+    provenance: "AI 来源凭证",
+    visible_watermark: "可见水印 OCR",
+    invisible_watermark: "隐形水印 (DwtDct)",
+    phash_match: "pHash 反查",
+  };
+  const moduleScoresHtml = kvBlock(
+    Object.entries(ov.module_scores || {}).map(([k, v]) => [moduleNameCn[k] || k, fmtNum(v, 3)])
+  );
+
   $("#overview-list").innerHTML = `
     <h3 style="margin-top:0">${badge(ov.risk_level)} 综合评估</h3>
-    <p>${ov.summary || ""}</p>
+    <p class="overview-summary">${escapeHtml(ov.summary || "（未生成结论）")}</p>
     ${kvBlock([
       ["路径", inp.file_path],
       ["大小", inp.file_size_bytes ? (inp.file_size_bytes/1024).toFixed(1) + " KB" : "-"],
@@ -56,7 +74,7 @@ function renderOverview(report) {
       ["综合置信度", fmtNum(ov.confidence, 3)],
     ])}
     <h4>各模块得分（0~1，越高越可疑）</h4>
-    ${kvBlock(Object.entries(ov.module_scores || {}).map(([k, v]) => [k, fmtNum(v, 3)]))}
+    ${moduleScoresHtml}
   `;
 }
 
@@ -192,42 +210,94 @@ function renderMetadata(report) {
 
 function renderAi(report) {
   const a = report.ai_provenance || {};
-  $("#tab-ai").innerHTML = `
-    <h2>AI 来源凭证 ${badge(a.risk_level)}</h2>
-    ${explain(`
-      <strong>这一步在做什么：</strong>查这张图是不是 AI 生成的，依据是两类信号：<br>
-      &nbsp;&nbsp;① <strong>C2PA 来源凭证</strong>（OpenAI / Adobe / 索尼相机用的官方"图片身份证"标准）；<br>
-      &nbsp;&nbsp;② <strong>元数据关键词</strong>（如 Stable Diffusion / DALL-E / Midjourney / Firefly 等）。<br>
-      <strong>注意：</strong>SynthID（Google 的隐式水印）无法在本地可靠检测，需要官方接口。
-    `)}
-    ${kvBlock([
-      ["状态", `<strong>${a.status || "-"}</strong>`],
-      ["风险等级", badge(a.risk_level)],
-      ["有 C2PA", a.c2pa_present],
-      ["C2PA 已验证", a.c2pa_verified],
-      ["c2patool 是否可用", a.c2pa_tool_available],
-      ["识别到的厂商 / 提供方", (a.detected_providers || []).join(", ") || "-"],
-      ["识别到的工具 / 模型", (a.detected_models_or_tools || []).join(", ") || "-"],
-      ["claim_generator", a.claim_generator],
-      ["生产方 (producer)", a.producer],
-      ["签发方 (issuer)", a.issuer],
-      ["动作 (actions)", (a.actions || []).join(", ") || "-"],
-    ])}
-    <h3>SynthID</h3>
-    ${kvBlock([
-      ["是否支持本地检测", a.synthid?.local_detection_supported],
-      ["是否需要外部验证", a.synthid?.external_verification_required],
-      ["说明", a.synthid?.note],
-    ])}
-    <h3>这一步的局限</h3>
-    <ul class="muted small">${(a.limitations || []).map(l => `<li>${l}</li>`).join("")}</ul>
-    <h3>建议跑的外部验证渠道</h3>
-    <ul>
-      <li><a href="https://contentcredentials.org/verify" target="_blank">Content Credentials Verify（C2PA 官方）</a></li>
-      <li><a href="https://help.openai.com/en/articles/8912793" target="_blank">OpenAI 来源验证说明</a></li>
-      <li><a href="https://deepmind.google/technologies/synthid/" target="_blank">Google Gemini / SynthID 介绍</a></li>
-    </ul>
-  `;
+  const fmtNum = (v, n = 3) => (typeof v === "number" && isFinite(v)) ? v.toFixed(n) : "-";
+  const _PROV_CN = {
+    "VERIFIED_AI_GENERATED": "已验证：AI 生成",
+    "VERIFIED_AI_EDITED": "已验证：AI 编辑过",
+    "PROVENANCE_PRESENT_BUT_UNVERIFIED": "存在 C2PA 来源凭证但未通过签名校验",
+    "POSSIBLE_AI_BUT_UNVERIFIED": "元数据疑似 AI 生成但缺少可信凭证",
+    "NO_PROVENANCE_FOUND": "未发现任何 AI 来源凭证 / 关键词",
+  };
+  const fp = a.synthid?.frequency_probe || {};
+  const susMap = { high: "高", medium: "中", low: "低" };
+
+  let fpHtml;
+  if (!fp.available) {
+    fpHtml = `<p class="muted small">未运行（${fp.reason || "图片读取失败或尺寸不足"}）。</p>`;
+  } else {
+    fpHtml = kvBlock([
+      ["可疑度", `<strong>${susMap[fp.suspicion] || fp.suspicion}</strong>`],
+      ["判定原因", fp.reason],
+      ["候选 bin 个数", fp.carrier_count_used],
+      ["平均 ratio（候选 bin / 同半径背景）", fmtNum(fp.peak_ratio_mean)],
+      ["P95 ratio", fmtNum(fp.peak_ratio_p95)],
+      ["相位圆方差（越小越像固定模板）", fmtNum(fp.phase_circular_variance)],
+      ["参考载频网格", fp.carrier_grid_reference || "-"],
+    ]);
+  }
+
+  let noProvHint = "";
+  if (a.status === "NO_PROVENANCE_FOUND") {
+    noProvHint = `
+      <div class="explain" style="background:#fff7ed;border-left-color:#f59e0b">
+        <strong>未发现任何 AI 来源痕迹，但这不代表图片不是 AI 生成。</strong><br>
+        当前主流 AI 出图工具（DeepSeek / 豆包 / ChatGPT 截图 / 流程图渲染器 / Midjourney 默认导出 / 国产模型等）
+        <strong>绝大多数都不写 C2PA、不写 EXIF AI 关键词、也不嵌可靠水印</strong>，
+        本工具能依赖的客观信号在这种情况下全部为空，无法做"是否 AI 生成"的肯定判断。<br>
+        如果你确认图是 AI 生成的，<strong>这是当前业界普遍现象，不是工具漏检</strong>。
+        要判断"风格上像不像 AI"，需要图像内容理解模型（CLIP / 视觉大模型），
+        本工具仅做"客观水印 / 元数据 / 频域指纹"取证，不做风格判别。
+      </div>
+    `;
+  }
+
+  let html;
+  try {
+    html = `
+      <h2>AI 来源凭证 ${badge(a.risk_level)}</h2>
+      ${explain(`
+        <strong>这一步在做什么：</strong>查这张图是不是 AI 生成的，依据是三类客观信号：<br>
+        &nbsp;&nbsp;① <strong>C2PA 来源凭证</strong>（OpenAI / Adobe / 索尼相机用的官方"图片身份证"标准）；<br>
+        &nbsp;&nbsp;② <strong>元数据关键词</strong>（如 Stable Diffusion / DALL-E / Midjourney / Firefly 等）；<br>
+        &nbsp;&nbsp;③ <strong>SynthID 频域启发式指纹</strong>（参考 reverse-SynthID 公布的低频载频网格）。<br>
+        <strong>注意：</strong>① ② 都依赖出图工具主动写入；如果都没命中，<strong>不能据此判断"非 AI 生成"</strong>。
+      `)}
+      ${noProvHint}
+      ${kvBlock([
+        ["状态", `<strong>${_PROV_CN[a.status] || a.status || "-"}</strong>`],
+        ["风险等级", badge(a.risk_level)],
+        ["有 C2PA", a.c2pa_present],
+        ["C2PA 已验证", a.c2pa_verified],
+        ["c2patool 是否可用", a.c2pa_tool_available],
+        ["识别到的厂商 / 提供方", (a.detected_providers || []).join(", ") || "-"],
+        ["识别到的工具 / 模型", (a.detected_models_or_tools || []).join(", ") || "-"],
+        ["claim_generator", a.claim_generator || "-"],
+        ["生产方 (producer)", a.producer || "-"],
+        ["签发方 (issuer)", a.issuer || "-"],
+        ["动作 (actions)", (a.actions || []).join(", ") || "-"],
+      ])}
+      <h3>SynthID</h3>
+      ${kvBlock([
+        ["是否支持本地检测", a.synthid?.local_detection_supported],
+        ["是否需要外部验证", a.synthid?.external_verification_required],
+        ["说明", a.synthid?.note],
+        ["官方 reverse-SynthID 包是否已安装", a.synthid?.reverse_synthid_package_installed],
+      ])}
+      <h4>SynthID 频域启发式探测（参考 reverse-SynthID）</h4>
+      ${fpHtml}
+      <h3>这一步的局限</h3>
+      <ul class="muted small">${(a.limitations || []).map(l => `<li>${l}</li>`).join("")}</ul>
+      <h3>建议跑的外部验证渠道</h3>
+      <ul>
+        <li><a href="https://contentcredentials.org/verify" target="_blank">Content Credentials Verify（C2PA 官方）</a></li>
+        <li><a href="https://help.openai.com/en/articles/8912793" target="_blank">OpenAI 来源验证说明</a></li>
+        <li><a href="https://deepmind.google/technologies/synthid/" target="_blank">Google Gemini / SynthID 介绍</a></li>
+      </ul>
+    `;
+  } catch (err) {
+    html = `<h2>AI 来源凭证</h2><p class="status error">渲染失败：${err && err.message ? err.message : err}</p><pre class="small muted">${JSON.stringify(a, null, 2)}</pre>`;
+  }
+  $("#tab-ai").innerHTML = html;
 }
 
 function renderFft(report) {
@@ -360,6 +430,26 @@ function renderCopyright(report) {
   const m = report.metadata || {};
   const ocr = report.visible_watermark || {};
   const ph = report.phash_match || {};
+  const inv = report.invisible_watermark || {};
+
+  // ---- 0. 版权字段汇总（EXIF + IPTC + XMP-PLUS） ----
+  const cs = m.copyright_summary || {};
+  const csFields = cs.fields || {};
+  const csKeys = Object.keys(csFields);
+  let csBlock;
+  if (csKeys.length === 0) {
+    csBlock = `<p class="muted">没有读到任何标准版权字段（EXIF Copyright/Artist、IPTC CopyrightNotice/Creator、XMP dc:rights/xmpRights:UsageTerms/plus:LicensorURL 全为空）。<br><strong>注意：</strong>这并不意味着图片"无版权" —— 很多平台压缩 / 截图 / 转码会把版权元数据全部抹除。</p>`;
+  } else {
+    const csRows = csKeys.map(k => {
+      const v = csFields[k];
+      const txt = (typeof v === "string") ? v : JSON.stringify(v);
+      return `<tr><td><code>${escapeHtml(k)}</code></td><td>${escapeHtml(txt)}</td></tr>`;
+    }).join("");
+    const head = cs.has_explicit_copyright
+      ? `<p>共 <strong>${cs.field_count}</strong> 条标准版权字段，含明确的版权声明（CopyrightNotice / dc:rights / plus:LicensorURL 等）。<strong>提醒：</strong>这些字段是"自填"的，AI 改图后伪造同样字段是常见攻击，需结合本页其他证据交叉验证。</p>`
+      : `<p>共 <strong>${cs.field_count}</strong> 条版权 / 创作者字段。</p>`;
+    csBlock = head + `<table class="results"><thead><tr><th>字段名</th><th>取值</th></tr></thead><tbody>${csRows}</tbody></table>`;
+  }
 
   // ---- 1. 元数据图库黑名单 ----
   const stockHits = m.metadata_stock_hits || [];
@@ -415,7 +505,53 @@ function renderCopyright(report) {
     ocrBlock = ocrSummary + ocrHits;
   }
 
-  // ---- 3. pHash 反查 ----
+  // ---- 3. 隐形水印（DwtDct / invisible-watermark） ----
+  let invBlock;
+  if (inv.status === "UNAVAILABLE") {
+    invBlock = notice("invisible-watermark / opencv-python 未安装 — 隐形水印解码已跳过",
+      `<p>这项检测需要本地装两个 Python 包，用来在频域 (DWT + DCT) 上尝试解码 SDXL / Stable Diffusion v2 等模型默认嵌入的 32-bit 隐形水印。</p>
+       <p><strong>怎么开启：</strong></p>
+       <ol>
+         <li>装 Python 包：<code>pip install invisible-watermark opencv-python</code></li>
+         <li>重启本工具，再次运行扫描即可。</li>
+       </ol>
+       <p>开启后会自动尝试 dwtDct / dwtDctSvd 两种方法 × 32 / 48 / 64 三种 bit 长，并匹配 SDV2/SDXL/ImaTag/ShieldMnt 等已知水印字典。</p>`);
+  } else if (inv.status === "TOO_SMALL") {
+    invBlock = notice("图像过小，隐形水印检测已跳过",
+      `<p>${escapeHtml((inv.limitations || []).join("；"))}</p>`);
+  } else if (inv.status === "ERROR") {
+    invBlock = notice("隐形水印解码出错", `<p><code>${escapeHtml(inv.error || "")}</code></p>`);
+  } else {
+    const invSummary = kvBlock([
+      ["状态", inv.status || "-"],
+      ["风险等级", inv.risk_level || "-"],
+      ["综合得分", fmtNum(inv.score)],
+      ["命中文本", inv.best_text ? `<code>${escapeHtml(String(inv.best_text))}</code>` : "（未解出可读文本）"],
+      ["匹配已知字典", inv.best_known_match ? `<strong>${escapeHtml(inv.best_known_match.key)}</strong> — ${escapeHtml(inv.best_known_match.label)}` : "（未匹配）"],
+    ]);
+    const decoded = inv.decoded || [];
+    const decodedTbl = decoded.length ? `
+      <details><summary>查看 ${decoded.length} 条解码尝试</summary>
+        <table class="results">
+          <thead><tr><th>方法</th><th>位长</th><th>可打印率</th><th>香农熵</th><th>解出文本</th><th>raw bytes (hex)</th></tr></thead>
+          <tbody>${decoded.map(d => `
+            <tr>
+              <td><code>${escapeHtml(d.method || "-")}</code></td>
+              <td>${d.bit_len ?? "-"}</td>
+              <td>${fmtNum(d.printable_ratio)}</td>
+              <td>${fmtNum(d.shannon_entropy)}</td>
+              <td>${d.text ? `<code>${escapeHtml(String(d.text))}</code>` : "<span class='muted'>-</span>"}</td>
+              <td><code class="muted">${escapeHtml(d.raw_bytes_hex || d.error || "-")}</code></td>
+            </tr>`).join("")}</tbody>
+        </table>
+      </details>` : `<p class="muted">没有产生任何可解码的字节（可能图像过小或库不可用）。</p>`;
+    const limHtml = (inv.limitations || []).length
+      ? `<ul class="muted small">${inv.limitations.map(l => `<li>${escapeHtml(l)}</li>`).join("")}</ul>`
+      : "";
+    invBlock = invSummary + decodedTbl + limHtml;
+  }
+
+  // ---- 4. pHash 反查 ----
   let phBlock;
   if (ph.status === "DISABLED" || !ph.status) {
     phBlock = notice("pHash 反查未启用 — 没设置参考图库",
@@ -464,11 +600,16 @@ function renderCopyright(report) {
   $("#tab-copyright").innerHTML = `
     <h2>版权 / 图库检测</h2>
     ${explain(`
-      <strong>这一步在做什么：</strong>专门针对"被人拿付费图库的图洗一下当原创"的场景，从三个角度判定：<br>
-      &nbsp;&nbsp;① <strong>元数据黑名单</strong>：图片 EXIF / XMP 里有没有残留 Getty / Shutterstock / Adobe Stock 等关键词；<br>
-      &nbsp;&nbsp;② <strong>可见水印 OCR</strong>：识别像素里"烧"进去的水印文字（如 "Getty Images"、©）；<br>
-      &nbsp;&nbsp;③ <strong>pHash 反查</strong>：把图与你本地的版权图库做感知哈希比对 —— <em>对重压缩 / 缩放 / 轻度调色鲁棒，是抓"洗图"最有效的一招</em>。
+      <strong>这一步在做什么：</strong>专门针对"版权图被洗 / AI 偷图 / 伪造版权声明"这一类场景，从五个角度交叉判定：<br>
+      &nbsp;&nbsp;⓪ <strong>版权字段汇总</strong>：把 EXIF Copyright/Artist、IPTC CopyrightNotice/Creator/Credit/Source/RightsUsageTerms、XMP dc:rights / xmpRights:UsageTerms / plus:LicensorURL / Photoshop:Credit 全部摆出来；<br>
+      &nbsp;&nbsp;① <strong>元数据黑名单</strong>：图片元数据里有没有残留 Getty / Shutterstock / Adobe Stock 等关键词；<br>
+      &nbsp;&nbsp;② <strong>可见水印 OCR</strong>：识别像素里"烧"进去的水印文字；<br>
+      &nbsp;&nbsp;③ <strong>隐形水印（DwtDct）</strong>：用 invisible-watermark 库尝试解 32/48/64-bit 频域水印（SDXL / SDV2 默认嵌入）；<br>
+      &nbsp;&nbsp;④ <strong>pHash 反查</strong>：和你本地版权图库做感知哈希比对，对重压缩 / 缩放 / 轻度调色鲁棒。
     `)}
+
+    <h3>⓪ 版权字段汇总（EXIF + IPTC + XMP-PLUS）</h3>
+    ${csBlock}
 
     <h3>① 元数据图库黑名单 ${badge(metaRisk)}</h3>
     ${metaHtml}
@@ -476,7 +617,10 @@ function renderCopyright(report) {
     <h3>② 可见水印 OCR ${badge(ocr.risk_level)}</h3>
     ${ocrBlock}
 
-    <h3>③ 感知哈希 (pHash) 反查 ${badge(ph.risk_level)}</h3>
+    <h3>③ 隐形水印（DwtDct / SDXL / SDV2）${badge(inv.risk_level)}</h3>
+    ${invBlock}
+
+    <h3>④ 感知哈希 (pHash) 反查 ${badge(ph.risk_level)}</h3>
     ${phBlock}
   `;
 }
@@ -487,13 +631,25 @@ function renderEvidence(report) {
     $("#tab-evidence").innerHTML = `<h2>证据汇总</h2><p class="muted">没有触发任何证据条目。</p>`;
     return;
   }
-  $("#tab-evidence").innerHTML = `<h2>证据汇总（共 ${items.length} 条）</h2>` + items.map(it => `
+  const MOD_CN = {
+    fft: "FFT 频域", dct: "DCT 频域", lsb: "LSB 位平面",
+    noise: "噪声残差", ela: "ELA 误差", steganalysis: "隐写检测（卡方/SPA）",
+    extraction: "隐藏内容提取", metadata: "元数据 / 黑名单",
+    ai_provenance: "AI 来源凭证", visible_watermark: "可见水印 OCR",
+    invisible_watermark: "隐形水印 (DwtDct)",
+    phash_match: "pHash 反查",
+  };
+  const SEV_CN = { high: "高", medium: "中", low: "低", info: "提示", warning: "警告" };
+  $("#tab-evidence").innerHTML = `<h2>证据汇总（共 ${items.length} 条）</h2>` + items.map(it => {
+    const mod = MOD_CN[it.module] || (it.module || "-");
+    const sev = SEV_CN[(it.severity || "").toLowerCase()] || it.severity || "-";
+    return `
     <div class="evidence-item ${it.severity || ''}">
-      <div class="title">[${it.module || '-'}] ${it.title || ''}</div>
+      <div class="title">[${mod}] ${it.title || ''}</div>
       <div>${it.description || ''}</div>
-      <div class="meta">严重度=${it.severity} 置信度=${fmtNum(it.confidence, 2)}</div>
-    </div>
-  `).join("");
+      <div class="meta">严重度=${sev} 置信度=${fmtNum(it.confidence, 2)}</div>
+    </div>`;
+  }).join("");
 }
 
 function renderRaw(report) {
@@ -510,8 +666,9 @@ function colorizeTabs(report) {
     copyright: (() => {
       const stock = report.metadata?.stock_image_match === "HIGH" ? "HIGH" : null;
       const ocrR = report.visible_watermark?.risk_level;
+      const invR = report.invisible_watermark?.risk_level;
       const phR  = report.phash_match?.risk_level;
-      const arr = [stock, ocrR, phR].filter(Boolean);
+      const arr = [stock, ocrR, invR, phR].filter(Boolean);
       if (arr.includes("HIGH")) return "HIGH";
       if (arr.includes("MEDIUM")) return "MEDIUM";
       if (arr.length) return "LOW";

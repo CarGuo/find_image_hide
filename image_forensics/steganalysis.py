@@ -203,24 +203,24 @@ def analyze_steganalysis(path: Path, is_lossy: bool) -> dict[str, Any]:
         evidence.append({
             "module": "steganalysis",
             "severity": sev,
-            "title": f"Sample Pair Analysis estimates LSB embedding rate ~{spa_max*100:.1f}%",
-            "description": "Sample Pair Analysis (Dumitrescu/Wu/Wang, 2003) estimates the fraction of pixels modified by LSB-replacement steganography. Rates >=20% are strong evidence; 10-20% may also occur on highly textured natural images.",
+            "title": f"样本对分析估计的 LSB 嵌入率约为 {spa_max*100:.1f}%",
+            "description": "样本对分析（Dumitrescu/Wu/Wang，2003）用于估计被 LSB 替换式隐写修改的像素比例。嵌入率 >=20% 是强证据；10-20% 也可能出现在高度纹理化的自然图像上。",
             "confidence": 0.7 if spa_max >= 0.20 else 0.4,
         })
     if not is_lossy and chi_p_max >= 0.95 and chi_prefix_max >= 0.2:
         evidence.append({
             "module": "steganalysis",
             "severity": "warning",
-            "title": f"Chi-square LSB attack: P(embedding) = {chi_p_max:.3f}, prefix ratio = {chi_prefix_max:.2f}",
-            "description": "Westfeld & Pfitzmann's chi-square test (1999) reports a high probability that the LSB pairs-of-values histogram has been equalized, AND a sliding chi-square confirms a long high-probability prefix. Combined, these are characteristic of LSB-replacement steganography.",
+            "title": f"卡方 LSB 攻击：P(嵌入) = {chi_p_max:.3f}，前缀比例 = {chi_prefix_max:.2f}",
+            "description": "Westfeld 与 Pfitzmann 的卡方检验（1999）显示 LSB 值对（pairs-of-values）直方图被均衡化的概率很高，同时滑动卡方也确认存在一段较长的高概率前缀。两者结合是 LSB 替换式隐写的典型特征。",
             "confidence": 0.65,
         })
     if not is_lossy and chi_prefix_max >= 0.5:
         evidence.append({
             "module": "steganalysis",
             "severity": "warning",
-            "title": f"Sequential LSB prefix detected (~{chi_prefix_max*100:.1f}% of stream)",
-            "description": "Sliding chi-square shows a long initial prefix where embedding probability stays high, then drops. This is the classical 'Westfeld curve' for sequential LSB tools (e.g. Steghide-like).",
+            "title": f"检测到顺序 LSB 前缀（约占数据流的 {chi_prefix_max*100:.1f}%）",
+            "description": "滑动卡方显示在数据起始处有一段较长的前缀，其嵌入概率持续偏高，之后下降。这是顺序写入型 LSB 工具（如 Steghide 等）的经典 “Westfeld 曲线”。",
             "confidence": 0.6,
         })
 
@@ -233,8 +233,8 @@ def analyze_steganalysis(path: Path, is_lossy: bool) -> dict[str, Any]:
         "risk_level": risk,
         "evidence_items": evidence,
         "limitations": [
-            "Chi-square and SPA only reliably detect LSB-replacement steganography in lossless formats.",
-            "JPEG / WebP-lossy compression destroys the LSB plane; results on lossy formats are not reliable.",
-            "These tests do not detect F5, OutGuess, JSteg matrix embedding, or modern LSB-matching (\u00b11) schemes.",
+            "卡方与 SPA 只能可靠检测无损格式中的 LSB 替换式隐写。",
+            "JPEG / WebP-lossy 等有损格式会破坏 LSB 位平面，得出的结果不可靠。",
+            "这两个测试无法识别 F5、OutGuess、JSteg 矩阵嵌入或现代的 LSB-matching（±1）方案。",
         ],
     }

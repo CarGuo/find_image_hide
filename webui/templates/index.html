@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <title>Image Forensics Inspector</title>
-  <link rel="stylesheet" href="/static/app.css" />
+  <link rel="stylesheet" href="/static/app.css?v={{ asset_version }}" />
 </head>
 <body>
   <header class="topbar">
@@ -13,16 +13,18 @@
 
   <main class="container">
     <section class="card">
-      <h2>方式一：直接把文件夹拖进来</h2>
-      <p class="muted small">
-        从资源管理器 / Finder 里把整个文件夹拖到下面的方框里，所有图片会被一次性上传到本机后端并自动开始扫描。
-        子目录会保留原有结构。所有处理都在本机的 webapp 进程里完成，不会发往外网。
-      </p>
+      <h2>推荐方式：直接把文件夹拖进来扫描</h2>
+      <div class="explain">
+        <strong>支持文件夹拖拽：</strong>
+        从资源管理器 / Finder 里把整个文件夹（含子目录）直接拖到下方方框，
+        所有图片会一次性上传到本机后端并自动开始批量扫描。
+        子目录结构会被保留，全部处理都在本机进行，不发往外网。
+      </div>
       <div id="dropzone" class="dropzone" tabindex="0">
         <div class="dz-inner">
-          <div class="dz-title">把文件夹拖到这里</div>
+          <div class="dz-title">把文件夹拖到这里 / 点此选择文件夹</div>
           <div class="dz-hint muted small">
-            支持 JPG / PNG / WebP / BMP / TIFF / GIF；也可以点这里选择文件夹
+            支持 JPG / PNG / WebP / BMP / TIFF / GIF —— 整个文件夹一次拖进来即可
           </div>
           <input type="file" id="dz-picker" webkitdirectory directory multiple hidden />
         </div>
@@ -58,10 +60,45 @@
     <section class="card">
       <h2>一键 Demo 说明</h2>
       <p class="muted small">
-        点击「一键运行 Demo」会直接分析项目内 <code>tools/test_images</code> 目录中预置的 15 + 张样本，
-        覆盖：正常图、LSB 隐写、附加 ZIP / 文本、AI 元数据、版权图（Shutterstock / Getty 元数据 + 可见水印）、
-        洗图反查（pHash 命中本地参考库）等典型场景。无需手填路径。
+        点击「一键运行 Demo」会直接分析项目内 <code>tools/test_images</code> 目录中预置的 25+ 张样本，覆盖：<br>
+        ① 正常图（JPEG / PNG）—— 零误报基准；<br>
+        ② 经典隐写：LSB 随机替换、LSB 文本载荷、PNG 后附 ZIP、JPEG EOI 后追加文本；<br>
+        ③ AI 痕迹：PNG text chunk 含 ChatGPT / DALL-E / SDXL / ComfyUI 关键字；<br>
+        ④ <strong>版权 / 图库（重点强化）</strong>：Getty / Shutterstock / iStock / Unsplash / Adobe Stock / Alamy 等
+        <strong>5 个主流图库的可见水印示例</strong>、<strong>IPTC 完整版权字段示例</strong>（CopyrightNotice/Creator/Credit/Source/RightsUsageTerms）、
+        <strong>invisible-watermark DwtDct 真实嵌入示例</strong>、<strong>「AI 改图后伪造版权声明」攻击示例</strong>；<br>
+        ⑤ 洗图反查：pHash 命中本地参考库的同源图。<br>
+        无需手填路径，全部本地处理。
       </p>
+    </section>
+
+    <section class="card">
+      <h2>版权检测：5 路交叉验证</h2>
+      <p class="muted small">
+        本工具针对"版权图被洗 / AI 偷图 / 伪造版权声明"这一类问题，从 5 个角度交叉判定（详见每张图的「版权 / 图库检测」 tab）：<br>
+        &nbsp;&nbsp;⓪ <strong>版权字段汇总</strong>：把 EXIF Copyright/Artist + IPTC CopyrightNotice/Creator/Credit/Source/RightsUsageTerms +
+        XMP-PLUS dc:rights / xmpRights:UsageTerms / plus:LicensorURL / Photoshop:Credit 全部摆出来，AI 伪造的版权字段一眼可辨；<br>
+        &nbsp;&nbsp;① <strong>元数据黑名单</strong>：30+ 主流图库 / 水印厂商关键词扫描；<br>
+        &nbsp;&nbsp;② <strong>可见水印 OCR</strong>：图像四角 / 中心区域 OCR 识别"烧"进像素的水印文字；<br>
+        &nbsp;&nbsp;③ <strong>隐形水印 (DwtDct)</strong>：用 invisible-watermark 库尝试 dwtDct / dwtDctSvd × 32/48/64 bits 解码，
+        匹配 SDV2/SDXL/ImaTag/ShieldMnt 等已知字典；<br>
+        &nbsp;&nbsp;④ <strong>pHash 反查</strong>：对重压缩 / 缩放 / 轻调色鲁棒的感知哈希同源识别。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>SynthID 增强（可选）</h2>
+      <p class="muted small">
+        默认已内置一套<strong>纯 numpy 频域启发式探测</strong>（参考
+        <a href="https://github.com/aloshdenny/reverse-SynthID" target="_blank">aloshdenny/reverse-SynthID</a>
+        公布的 1024×1024 低频载频网格），无需任何额外依赖即可在每张图的「AI 来源凭证」 tab 看到结果。<br>
+        如果你希望使用<strong>官方 reverse-SynthID 包 + codebook</strong> 做更精细的反推，可以一键安装。
+        过程会执行 <code>pip install</code> 并下载约 220MB codebook，全部写入当前 Python 环境，仅在本机运行。
+      </p>
+      <button id="synthid-setup-btn" class="primary" style="background:#7a4ad6">一键启用官方 reverse-SynthID</button>
+      <button id="synthid-status-btn" class="primary" style="margin-left:8px;background:#666">刷新状态</button>
+      <div id="synthid-status" class="status"></div>
+      <pre id="synthid-log" class="small muted" style="max-height:200px;overflow:auto;background:#0e0e10;color:#c8c8c8;padding:8px;border-radius:6px;display:none"></pre>
     </section>
 
     <section class="card">
@@ -76,6 +113,6 @@
     </section>
   </main>
 
-  <script src="/static/app.js"></script>
+  <script src="/static/app.js?v={{ asset_version }}"></script>
 </body>
 </html>
