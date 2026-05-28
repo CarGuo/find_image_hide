@@ -134,8 +134,8 @@ def main(argv: list[str] | None = None) -> int:
                    help="After preparing the demo, start the Flask Web UI")
     p.add_argument("--no-browser", action="store_true",
                    help="When --serve is on, do not auto-open the browser")
-    p.add_argument("--port", type=int, default=5000,
-                   help="Web UI port (default: 5000)")
+    p.add_argument("--port", type=int, default=5050,
+                   help="Web UI port (default: 5050)")
     args = p.parse_args(argv)
 
     t0 = time.time()

@@ -76,7 +76,10 @@ if (demoBtn) {
 // ----------------- 拖拽上传 -----------------
 
 const dz = document.getElementById("dropzone");
-const dzPicker = document.getElementById("dz-picker");
+const dzPickerDir = document.getElementById("dz-picker-dir");
+const dzPickerFiles = document.getElementById("dz-picker-files");
+const dzPickDirBtn = document.getElementById("dz-pick-dir");
+const dzPickFilesBtn = document.getElementById("dz-pick-files");
 const dzStatus = document.getElementById("dz-status");
 const dzProgress = document.getElementById("dz-progress");
 const dzBar = document.getElementById("dz-bar");
@@ -257,29 +260,101 @@ if (dz) {
       dzSetStatus("读取失败：" + err.message, true);
     }
   });
-  dz.addEventListener("click", () => {
-    if (!dz.classList.contains("busy") && dzPicker) dzPicker.click();
+  // 用 capture 阶段拦截：只要点击的是 .dz-actions 内的按钮，根本不让 dz 自己的 click 监听跑。
+  // 这样可以彻底避免"先弹文件夹选择，再弹多图选择"的双弹现象（事件冒泡 + 上一轮 stopPropagation
+  // 来不及生效的情况）。
+  dz.addEventListener("click", (e) => {
+    const t = e.target;
+    if (t && t.closest && t.closest(".dz-actions")) {
+      // 命中按钮区域：直接放行给按钮自己的 handler 处理，dz 不参与
+      return;
+    }
+    // 完全空白处点击：仅给文字提示，**不**再调用任何 picker
+    if (dz.classList.contains("busy")) return;
+    dzSetStatus("请点击下方按钮：「选择文件夹」或「选择多张图片」；也可以直接把文件夹拖进来。");
   });
   dz.addEventListener("keydown", (e) => {
-    if ((e.key === "Enter" || e.key === " ") && !dz.classList.contains("busy") && dzPicker) {
+    if ((e.key === "Enter" || e.key === " ") && !dz.classList.contains("busy") && dzPickerDir) {
       e.preventDefault();
-      dzPicker.click();
+      dzPickerDir.click();
     }
   });
 }
 
-if (dzPicker) {
-  dzPicker.addEventListener("change", async () => {
-    const files = Array.from(dzPicker.files || []);
+// 检测当前浏览器是否真的支持 webkitdirectory：用一个临时 input 探测属性
+function browserSupportsDirectoryPicker() {
+  try {
+    const probe = document.createElement("input");
+    probe.type = "file";
+    return ("webkitdirectory" in probe) || ("directory" in probe);
+  } catch (_) {
+    return false;
+  }
+}
+
+const DIR_PICKER_OK = browserSupportsDirectoryPicker();
+if (!DIR_PICKER_OK && dzPickDirBtn) {
+  // 不支持的话，禁用"选择文件夹"按钮并改成提示文案，引导用户走"选择多张图片"
+  dzPickDirBtn.disabled = true;
+  dzPickDirBtn.title = "当前浏览器不支持文件夹选择，请用「选择多张图片」或直接把文件夹拖进来";
+  dzPickDirBtn.style.opacity = "0.5";
+  dzPickDirBtn.textContent = "选择文件夹（当前浏览器不支持）";
+}
+
+if (dzPickDirBtn) {
+  dzPickDirBtn.addEventListener("click", (e) => {
+    // stopImmediatePropagation 比 stopPropagation 更狠：连同同元素上其它 listener 也不再触发，
+    // 防止任何顺序问题导致 dz 的 click 监听仍然被调用。
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (dzPickDirBtn.disabled) return;
+    if (!DIR_PICKER_OK) {
+      dzSetStatus("当前浏览器不支持文件夹选择，请改用「选择多张图片」，或直接把文件夹拖进来。", true);
+      return;
+    }
+    if (!dz.classList.contains("busy") && dzPickerDir) dzPickerDir.click();
+  });
+}
+
+if (dzPickFilesBtn) {
+  dzPickFilesBtn.addEventListener("click", (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.stopImmediatePropagation();
+    if (!dz.classList.contains("busy") && dzPickerFiles) dzPickerFiles.click();
+  });
+}
+
+if (dzPickerDir) {
+  dzPickerDir.addEventListener("change", async () => {
+    const files = Array.from(dzPickerDir.files || []);
     const items = files
       .filter((f) => isSupported(f.name))
       .map((f) => ({ file: f, path: f.webkitRelativePath || f.name }));
     if (!items.length) {
-      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）", true);
+      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）。如果系统没有打开'选择文件夹'对话框，请改用右侧「选择多张图片」。", true);
+      dzPickerDir.value = "";
       return;
     }
     await handleDroppedItems(items);
-    dzPicker.value = "";
+    dzPickerDir.value = "";
+  });
+}
+
+if (dzPickerFiles) {
+  dzPickerFiles.addEventListener("change", async () => {
+    const files = Array.from(dzPickerFiles.files || []);
+    const items = files
+      .filter((f) => isSupported(f.name))
+      .map((f) => ({ file: f, path: f.name }));
+    if (!items.length) {
+      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）", true);
+      dzPickerFiles.value = "";
+      return;
+    }
+    await handleDroppedItems(items);
+    dzPickerFiles.value = "";
   });
 }
 

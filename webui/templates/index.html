@@ -22,11 +22,16 @@
       </div>
       <div id="dropzone" class="dropzone" tabindex="0">
         <div class="dz-inner">
-          <div class="dz-title">把文件夹拖到这里 / 点此选择文件夹</div>
+          <div class="dz-title">把文件夹拖到这里 / 点此选择</div>
           <div class="dz-hint muted small">
             支持 JPG / PNG / WebP / BMP / TIFF / GIF —— 整个文件夹一次拖进来即可
           </div>
-          <input type="file" id="dz-picker" webkitdirectory directory multiple hidden />
+          <div class="dz-actions" style="margin-top:10px;display:flex;gap:8px;justify-content:center;flex-wrap:wrap">
+            <button type="button" id="dz-pick-dir" class="primary">选择文件夹</button>
+            <button type="button" id="dz-pick-files" class="primary" style="background:#0aa">选择多张图片</button>
+          </div>
+          <input type="file" id="dz-picker-dir" webkitdirectory directory multiple hidden />
+          <input type="file" id="dz-picker-files" accept="image/*" multiple hidden />
         </div>
       </div>
       <div id="dz-status" class="status"></div>
@@ -108,7 +113,7 @@
         <li>没找到 C2PA / 元数据并不代表不是 AI 图。C2PA 可能在截图、平台压缩、格式转换中丢失。</li>
         <li>SynthID 不在常规 EXIF/XMP 中，本地无法可靠检测，需要官方验证渠道。</li>
         <li>所有分数都是 heuristic，不构成法律鉴定结论。</li>
-        <li>拖拽上传仅与本机 webapp 进程通信（默认 127.0.0.1:5000），不会发送到外部服务器。但请勿把工具暴露到公网。</li>
+        <li>拖拽上传仅与本机 webapp 进程通信（默认 127.0.0.1:5050），不会发送到外部服务器。但请勿把工具暴露到公网。</li>
       </ul>
     </section>
   </main>

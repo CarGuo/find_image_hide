@@ -23,7 +23,7 @@ if [ "${1:-}" = "--demo" ]; then
     echo
 fi
 
-URL="http://127.0.0.1:5000"
+URL="http://127.0.0.1:5050"
 echo
 echo "Starting Image Forensics Inspector at $URL"
 echo "Press Ctrl+C to stop."
@@ -36,4 +36,4 @@ elif command -v xdg-open >/dev/null 2>&1; then
     (sleep 1.5 && xdg-open "$URL") &
 fi
 
-python webapp.py --host 127.0.0.1 --port 5000
+python webapp.py --host 127.0.0.1 --port 5050

@@ -21,9 +21,9 @@ if /I "%~1"=="--demo" (
 )
 
 echo.
-echo Starting Image Forensics Inspector at http://127.0.0.1:5000
+echo Starting Image Forensics Inspector at http://127.0.0.1:5050
 echo Press Ctrl+C to stop.
 echo.
-start "" "http://127.0.0.1:5000"
-python webapp.py --host 127.0.0.1 --port 5000
+start "" "http://127.0.0.1:5050"
+python webapp.py --host 127.0.0.1 --port 5050
 endlocal
