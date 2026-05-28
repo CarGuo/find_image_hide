@@ -190,7 +190,12 @@ def analyze_steganalysis(path: Path, is_lossy: bool) -> dict[str, Any]:
     chi_pov_strong = chi_p_max >= 0.95
     chi_prefix_strong = chi_prefix_max >= 0.5
     consensus_high = spa_support and chi_pov_strong and chi_prefix_strong
-    if spa_very_strong or (spa_strong and chi_pov_strong) or consensus_high:
+    if is_lossy:
+        # 文档自述"卡方/SPA 在有损格式上得出的结果不可靠"——代码必须对应执行。
+        # JPEG 量化让 PoV 直方图天然均衡，chi P 在高纹理 JPEG 上经常 →1，但这
+        # 不是隐写。lossy 路径下完全关闭 risk 升级，只保留 score 用于参考。
+        risk = "LOW"
+    elif spa_very_strong or (spa_strong and chi_pov_strong) or consensus_high:
         risk = "HIGH"
     elif spa_max >= 0.10 or (chi_pov_strong and chi_prefix_strong):
         risk = "MEDIUM"

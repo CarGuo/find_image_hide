@@ -11,6 +11,23 @@ from PIL import Image
 
 SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
 
+# 真正"无损"的容器：LSB 位平面在这里才是可信的检测目标。
+# 注意：不在这个集合里的（JPEG / MPO / HEIC / AVIF / WEBP-lossy / JFIF / JP2 / JPS / MPF...）
+# 一律视为 lossy —— LSB 平面会被量化和反量化的舍入误差搞成接近白噪声，
+# 把白噪声+卡方 P→1 当成"满载隐写"是 Westfeld 1999 论文里就警告过的经典 false positive。
+LOSSLESS_FORMATS = {"PNG", "BMP", "TIFF", "TIF", "GIF", "PPM", "PGM", "PSD"}
+
+
+def is_lossy_format(fmt: str | None) -> bool:
+    """判断 PIL `Image.format` / 报告里 input.format 是否为有损容器。
+
+    采用"白名单无损 → 其余全部视为有损"策略，避免今后扩 MPO/HEIC/AVIF 等
+    新格式时漏改风险评估代码（这是 issue #1 之前的写法的真正坑点）。
+    """
+    if not fmt:
+        return False
+    return fmt.upper() not in LOSSLESS_FORMATS
+
 
 def is_supported_image(path: Path) -> bool:
     return path.suffix.lower() in SUPPORTED_EXTS and path.is_file()

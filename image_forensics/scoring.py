@@ -3,6 +3,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from .utils import is_lossy_format
+
 RISK_RANK = {"LOW": 0, "UNKNOWN": 1, "MEDIUM": 2, "HIGH": 3}
 RANK_RISK = {v: k for k, v in RISK_RANK.items()}
 
@@ -13,7 +15,7 @@ def _r(level: str) -> int:
 
 def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     fmt = (report.get("input", {}).get("format") or "").upper()
-    is_lossy = fmt in {"JPEG", "JPG", "WEBP"}
+    is_lossy = is_lossy_format(fmt)
 
     fft = report.get("frequency_analysis", {})
     dct = report.get("dct_analysis", {})
@@ -102,11 +104,18 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     spa = float(steg.get("spa_max_embedding_rate", 0.0)) if steg else 0.0
     chi_p = float(steg.get("chi_square_max_p_embed", 0.0)) if steg else 0.0
     # "Full-LSB-replacement" signature: the LSB plane is statistically white
-    # noise on every channel, AND the chi-square POV test agrees. SPA can sit
-    # near 0 (math fixed point) or near 1 in this case, so we use chi+lsb
-    # consensus (this is exactly what StegSecret + stegdetect's plain-LSB
-    # test does).
-    full_lsb_replacement = (not is_lossy) and lsb_white_noise and chi_p >= 0.95
+    # noise on every channel, AND the chi-square POV test agrees, AND SPA
+    # also confirms a non-trivial embedding rate.
+    #
+    # 三信号共识，原因：单看 LSB+chi 在高纹理自然图像上会同时偏 1（它们本就高度相关），
+    # 但 SPA 在自然图（即便很噪）上稳定保持低值，所以加上 spa>=0.20 才能真正杀掉
+    # 手机原片的 false positive。同时强制非 lossy（lossy 容器 LSB 不可信）。
+    full_lsb_replacement = (
+        (not is_lossy)
+        and lsb_white_noise
+        and chi_p >= 0.95
+        and spa >= 0.20
+    )
 
     # 复合升级：AI 关键字 ≥ 2 条 + 元数据声明明确版权 ⇒ 强烈怀疑"AI 改图后伪造版权声明"
     ai_kw_count = len(meta.get("metadata_ai_keywords") or [])

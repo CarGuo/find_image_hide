@@ -65,7 +65,8 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         errors.append(f"dct: {exc}")
 
     fmt = (basic.get("format") or "").upper()
-    is_lossy = fmt in {"JPEG", "JPG", "WEBP"}
+    from .utils import is_lossy_format
+    is_lossy = is_lossy_format(fmt)
     try:
         lsb = analyze_lsb(input_path, vis_dir, is_lossy=is_lossy)
     except Exception as exc:
