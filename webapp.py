@@ -20,7 +20,7 @@ DEFAULT_OUTPUT = APP_ROOT / "analysis_output"
 DEFAULT_OUTPUT.mkdir(parents=True, exist_ok=True)
 
 
-SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"}
+SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
 MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 
@@ -131,9 +131,16 @@ def _job_progress(job_id: str):
                 return
             job["done"] = done
             job["total"] = total
-            # batch.py 现在会用 phase=starting/analyzing 推送"正在做什么"的脉搏，
-            # 这些不是真正的图片分析结果，只更新 current_file，不进 results 列表。
+            # batch.py 现在会用 phase=starting/analyzing/enqueued 推送"正在做什么"的脉搏，
+            # 这些不是真正的图片分析结果，只更新 current_file/pending_files，不进 results 列表。
             phase = (res or {}).get("phase")
+            if phase == "enqueued":
+                # 把"待分析文件名列表"存下来，前端在 0/N 阶段也能显示具体文件名
+                pending = (res or {}).get("pending_files") or []
+                # 文件名很多时只保留 basename，避免 JOBS 字典过大
+                job["pending_files"] = [Path(p).name for p in pending][:1000]
+                job["phase"] = "enqueued"
+                return
             if phase in ("starting", "analyzing"):
                 job["current_file"] = (res or {}).get("image_path") or ""
                 job["phase"] = phase
@@ -143,6 +150,14 @@ def _job_progress(job_id: str):
                 return
             job["last"] = res
             job["results"].append(res)
+            # 一张图分析完，从待分析名单里把它划掉，让前端能看到名单收缩
+            try:
+                done_name = Path((res or {}).get("image_path") or "").name
+                pending = job.get("pending_files") or []
+                if done_name and pending:
+                    job["pending_files"] = [n for n in pending if n != done_name]
+            except Exception:
+                pass
             job["current_file"] = ""
     return cb
 
@@ -353,6 +368,8 @@ def api_job_status(job_id: str):
         job = JOBS.get(job_id)
         if not job:
             return jsonify({"error": "not found"}), 404
+        # 待分析文件名只返回前 5 个抽样 + 总数，给前端做"已派发，等待第一张完成"提示用
+        pending = job.get("pending_files") or []
         return jsonify({
             "id": job["id"],
             "status": job["status"],
@@ -366,6 +383,8 @@ def api_job_status(job_id: str):
             "results": job["results"][-50:],
             "summary": job.get("summary"),
             "error": job.get("error"),
+            "pending_sample": pending[:5],
+            "pending_count": len(pending),
         })
 
 

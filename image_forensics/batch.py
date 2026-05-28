@@ -105,6 +105,13 @@ def analyze_directory(
         # 立即把 total 报给 UI（done=0），让前端进度条尽早能渲染
         if progress_cb:
             progress_cb(0, total, {"phase": "starting", "total": total})
+            # 把所有"待分析"文件名一次性广播给 UI，让用户知道任务已派发，
+            # 不会在等第一张完成期间误以为"卡死"。
+            progress_cb(0, total, {
+                "phase": "enqueued",
+                "total": total,
+                "pending_files": [t[0] for t in tasks],
+            })
         with ProcessPoolExecutor(max_workers=workers) as pool:
             futures = {pool.submit(_analyze_one, t): t for t in tasks}
             done = 0

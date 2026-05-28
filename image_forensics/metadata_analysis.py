@@ -7,6 +7,8 @@ from typing import Any
 
 from PIL import ExifTags, Image
 
+from .psd_metadata import parse_psd_metadata
+
 try:
     from iptcinfo3 import IPTCInfo  # type: ignore
     _HAS_IPTC = True
@@ -355,6 +357,29 @@ def collect_metadata(path: Path) -> dict[str, Any]:
     except Exception as exc:
         result["error"] = f"metadata_failed: {exc}"
 
+    # --- PSD 专用分支：直接读 Image Resources Block ---
+    psd_meta: dict[str, Any] = {}
+    if path.suffix.lower() == ".psd":
+        try:
+            psd_meta = parse_psd_metadata(path) or {}
+        except Exception as exc:
+            psd_meta = {"error": f"psd_parse_failed: {exc}"}
+        if psd_meta:
+            result["raw"]["psd"] = psd_meta
+            # PSD 里的 XMP 是文本，直接覆盖（PIL 在 PSD 上很多版本不导出 XMP）
+            xmp_text = psd_meta.get("xmp")
+            if xmp_text and not result["raw"].get("xmp"):
+                result["has_xmp"] = True
+                result["raw"]["xmp"] = xmp_text
+            # PSD 里的 IPTC IIM 已经被解析成语义名 dict，直接合并到 iptc_full
+            psd_iptc = psd_meta.get("iptc_iim") or {}
+            if psd_iptc:
+                result["has_iptc"] = True
+                merged = dict(result["raw"].get("iptc_full") or {})
+                for k, v in psd_iptc.items():
+                    merged.setdefault(k, v)
+                result["raw"]["iptc_full"] = merged
+
     # --- IPTC IIM 完整字段（iptcinfo3） ---
     iptc_full: dict[str, Any] = {}
     try:
@@ -363,7 +388,11 @@ def collect_metadata(path: Path) -> dict[str, Any]:
         iptc_full = {}
     if iptc_full:
         result["has_iptc"] = True
-        result["raw"]["iptc_full"] = iptc_full
+        merged = dict(result["raw"].get("iptc_full") or {})
+        for k, v in iptc_full.items():
+            merged.setdefault(k, v)
+        result["raw"]["iptc_full"] = merged
+    iptc_full = result["raw"].get("iptc_full") or {}
 
     # --- XMP-PLUS / dc / xmpRights / photoshop 版权字段 ---
     xmp_copyright: dict[str, Any] = {}

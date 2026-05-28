@@ -9,7 +9,7 @@ from typing import Iterable
 import numpy as np
 from PIL import Image
 
-SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff"}
+SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
 
 
 def is_supported_image(path: Path) -> bool:

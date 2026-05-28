@@ -153,6 +153,7 @@ function fmtFileName(p) {
 
 const PHASE_CN = {
   starting: "已读取目录，开始派发任务…",
+  enqueued: "已派发任务，等待第一张完成…",
   analyzing: "正在分析中…",
   no_images: "目录里没有发现支持的图片",
 };
@@ -193,6 +194,15 @@ function updateProgressUi(job) {
     meta.textContent = `共 ${total} 张图，用时 ${fmtDuration(elapsed)}`;
   } else if (total === 0) {
     meta.textContent = PHASE_CN[phase] || "枚举目录、计算图片数量…";
+  } else if (done === 0) {
+    // 0/N 阶段：用 pending_sample 给一个动态、可读的提示，避免看上去"卡死"
+    const sample = (job.pending_sample || []).slice(0, 3);
+    if (sample.length) {
+      const more = job.pending_count > sample.length ? `… 等 ${job.pending_count} 张` : "";
+      meta.textContent = `已派发 ${total} 张到 worker，等待第一张完成（这通常是最慢的，PSD/大图可能 5-30 秒）：${sample.join("、")}${more}`;
+    } else {
+      meta.textContent = `已派发 ${total} 张到 worker，等待第一张完成（这通常是最慢的，PSD/大图可能 5-30 秒）…`;
+    }
   } else if (done < total) {
     // 估算剩余时间
     const elapsed = job.started_at ? (Date.now() / 1000 - job.started_at) : null;
@@ -237,6 +247,10 @@ function updateProgressUi(job) {
   if (status === "running" && fname) {
     cur.textContent = fname;
     cur.classList.add("has-file");
+  } else if (status === "running" && total > 0 && done === 0 && (job.pending_sample || []).length) {
+    // 0/N 阶段：把第一个 pending 文件名当作"即将分析"展示，让用户感觉有进展
+    cur.textContent = "即将分析：" + job.pending_sample[0];
+    cur.classList.remove("has-file");
   } else if (status === "running" && total > 0 && done < total) {
     // 多 worker 时不一定有 current_file；展示一句兜底
     cur.textContent = "并发分析中…";

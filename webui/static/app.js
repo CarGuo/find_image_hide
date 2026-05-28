@@ -1,6 +1,6 @@
 const $ = (sel) => document.querySelector(sel);
 
-const SUPPORTED_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif"];
+const SUPPORTED_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"];
 
 function isSupported(name) {
   const lower = (name || "").toLowerCase();
@@ -172,18 +172,35 @@ async function collectFromDataTransfer(dataTransfer) {
   return collected;
 }
 
+// 后端 webapp.MAX_UPLOAD_BYTES 是 1 GiB，我们留一点余量（multipart 边界开销）
+const UPLOAD_LIMIT_BYTES = 1024 * 1024 * 1024 - 16 * 1024 * 1024;  // ≈ 1008 MiB
+
+function fmtMB(n) {
+  return (n / 1024 / 1024).toFixed(1) + " MB";
+}
+
 function uploadAndStart(items) {
   return new Promise((resolve, reject) => {
     if (!items.length) {
-      reject(new Error("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）"));
+      reject(new Error("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF/PSD）"));
+      return;
+    }
+    let totalBytes = 0;
+    for (const it of items) totalBytes += (it.file && it.file.size) || 0;
+    // 上传前先卡一次：超过后端 MAX_CONTENT_LENGTH 的话，就别让浏览器把 GB 级数据
+    // 推完几分钟再被 413 打回来——直接友好拒绝并引导用户改用"方式二：填本地路径"。
+    if (totalBytes > UPLOAD_LIMIT_BYTES) {
+      reject(new Error(
+        `本次共 ${items.length} 个文件、约 ${fmtMB(totalBytes)}，已超过单次上传上限（约 ${fmtMB(UPLOAD_LIMIT_BYTES)}）。\n` +
+        "建议改用「方式二：填本地目录路径」——直接把目录绝对路径填进下方输入框、点「开始扫描」，" +
+        "后端会在本机直接读取，无需上传，几十 GB 也不受限。"
+      ));
       return;
     }
     const fd = new FormData();
-    let totalBytes = 0;
     for (const it of items) {
       fd.append("files", it.file, it.file.name);
       fd.append("paths", it.path);
-      totalBytes += it.file.size;
     }
     fd.append("recursive", "true");
     fd.append("workers", "2");
@@ -200,19 +217,24 @@ function uploadAndStart(items) {
       try { data = JSON.parse(xhr.responseText || "{}"); } catch (_) {}
       if (xhr.status >= 200 && xhr.status < 300) {
         resolve(data);
+      } else if (xhr.status === 413) {
+        reject(new Error(
+          "上传被拒绝：超过后端单次上传上限（约 1 GB）。" +
+          "请改用「方式二：填本地目录路径」直接让后端在本机读取目录。"
+        ));
       } else {
         reject(new Error(data.error || ("HTTP " + xhr.status)));
       }
     };
     xhr.onerror = () => reject(new Error("网络错误，上传失败"));
-    dzSetProgress(0, totalBytes, `准备上传 ${items.length} 个文件，共约 ${(totalBytes / 1024 / 1024).toFixed(1)} MB`);
+    dzSetProgress(0, totalBytes, `准备上传 ${items.length} 个文件，共约 ${fmtMB(totalBytes)}`);
     xhr.send(fd);
   });
 }
 
 async function handleDroppedItems(items) {
   if (!items.length) {
-    dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）", true);
+    dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF/PSD）", true);
     return;
   }
   dzSetBusy(true);
@@ -333,7 +355,7 @@ if (dzPickerDir) {
       .filter((f) => isSupported(f.name))
       .map((f) => ({ file: f, path: f.webkitRelativePath || f.name }));
     if (!items.length) {
-      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）。如果系统没有打开'选择文件夹'对话框，请改用右侧「选择多张图片」。", true);
+      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF/PSD）。如果系统没有打开'选择文件夹'对话框，请改用右侧「选择多张图片」。", true);
       dzPickerDir.value = "";
       return;
     }
@@ -349,7 +371,7 @@ if (dzPickerFiles) {
       .filter((f) => isSupported(f.name))
       .map((f) => ({ file: f, path: f.name }));
     if (!items.length) {
-      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF）", true);
+      dzSetStatus("没有发现支持的图片文件（JPG/PNG/WebP/BMP/TIFF/GIF/PSD）", true);
       dzPickerFiles.value = "";
       return;
     }
