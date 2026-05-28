@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Image Forensics Inspector</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <h1>Image Forensics Inspector</h1>
+    <span class="muted">本地图片隐写 / 来源凭证取证分析</span>
+  </header>
+
+  <main class="container">
+    <section class="card">
+      <h2>方式一：直接把文件夹拖进来</h2>
+      <p class="muted small">
+        从资源管理器 / Finder 里把整个文件夹拖到下面的方框里，所有图片会被一次性上传到本机后端并自动开始扫描。
+        子目录会保留原有结构。所有处理都在本机的 webapp 进程里完成，不会发往外网。
+      </p>
+      <div id="dropzone" class="dropzone" tabindex="0">
+        <div class="dz-inner">
+          <div class="dz-title">把文件夹拖到这里</div>
+          <div class="dz-hint muted small">
+            支持 JPG / PNG / WebP / BMP / TIFF / GIF；也可以点这里选择文件夹
+          </div>
+          <input type="file" id="dz-picker" webkitdirectory directory multiple hidden />
+        </div>
+      </div>
+      <div id="dz-status" class="status"></div>
+      <div id="dz-progress" class="progress hidden">
+        <div class="bar"><div class="bar-fill" id="dz-bar"></div></div>
+        <div class="progress-text small muted" id="dz-progress-text"></div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>方式二：填本地目录路径</h2>
+      <p class="muted small">
+        如果图片体积比较大，更推荐这种方式：直接告诉后端一个本机绝对路径，省掉一次"上传到自己电脑"的过程。
+        所有分析在本地完成，不上传任何数据。
+      </p>
+      <div class="form-row">
+        <label>目录路径</label>
+        <input type="text" id="dir" placeholder="例如：D:\photos 或 /Users/me/Pictures" />
+      </div>
+      <div class="form-row inline">
+        <label><input type="checkbox" id="recursive" checked /> 递归扫描子目录</label>
+        <label>并发 worker 数：
+          <input type="number" id="workers" value="2" min="1" max="8" style="width:60px" />
+        </label>
+      </div>
+      <button id="scan-btn" class="primary">开始扫描</button>
+      <button id="demo-btn" class="primary" style="margin-left:8px;background:#0aa">一键运行 Demo</button>
+      <div id="status" class="status"></div>
+    </section>
+
+    <section class="card">
+      <h2>一键 Demo 说明</h2>
+      <p class="muted small">
+        点击「一键运行 Demo」会直接分析项目内 <code>tools/test_images</code> 目录中预置的 15 + 张样本，
+        覆盖：正常图、LSB 隐写、附加 ZIP / 文本、AI 元数据、版权图（Shutterstock / Getty 元数据 + 可见水印）、
+        洗图反查（pHash 命中本地参考库）等典型场景。无需手填路径。
+      </p>
+    </section>
+
+    <section class="card">
+      <h2>注意事项 / 局限</h2>
+      <ul class="muted small">
+        <li>本工具仅提供启发式取证信号，不能证明图片绝对有/无水印或绝对是/不是 AI 生成。</li>
+        <li>没找到 C2PA / 元数据并不代表不是 AI 图。C2PA 可能在截图、平台压缩、格式转换中丢失。</li>
+        <li>SynthID 不在常规 EXIF/XMP 中，本地无法可靠检测，需要官方验证渠道。</li>
+        <li>所有分数都是 heuristic，不构成法律鉴定结论。</li>
+        <li>拖拽上传仅与本机 webapp 进程通信（默认 127.0.0.1:5000），不会发送到外部服务器。但请勿把工具暴露到公网。</li>
+      </ul>
+    </section>
+  </main>
+
+  <script src="/static/app.js"></script>
+</body>
+</html>

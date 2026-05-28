@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Virtualenv
+.venv/
+venv/
+env/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# Project: runtime artefacts (regenerated on demand)
+analysis_output/
+_check_html/
+tools/test_images/
+tools/phash_reference/
+
+# Local secrets / overrides
+.env
+*.local

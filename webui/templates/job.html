@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>扫描结果 - {{ job_id }}</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="/" class="back">&larr; 返回</a>
+    <h1>扫描结果</h1>
+    <span class="muted">Job: {{ job_id }}</span>
+  </header>
+
+  <main class="container">
+    <section class="card" id="job-info">
+      <div id="progress-line">加载中...</div>
+      <div id="stats" class="stats"></div>
+    </section>
+
+    <section class="card">
+      <div class="toolbar">
+        <input type="text" id="filter" placeholder="按文件名筛选..." />
+        <select id="risk-filter">
+          <option value="">全部风险等级</option>
+          <option value="HIGH">HIGH</option>
+          <option value="MEDIUM">MEDIUM</option>
+          <option value="LOW">LOW</option>
+          <option value="UNKNOWN">UNKNOWN</option>
+          <option value="ERROR">ERROR</option>
+        </select>
+      </div>
+      <table class="results">
+        <thead>
+          <tr>
+            <th>#</th>
+            <th>文件</th>
+            <th>格式</th>
+            <th>尺寸</th>
+            <th>风险</th>
+            <th>置信度</th>
+            <th>AI Provenance</th>
+            <th>SPA 嵌入率</th>
+            <th>χ² P</th>
+            <th>尾部字节</th>
+            <th>提取分</th>
+            <th>操作</th>
+          </tr>
+        </thead>
+        <tbody id="results-body"></tbody>
+      </table>
+    </section>
+  </main>
+
+  <script>
+    const JOB_ID = "{{ job_id }}";
+  </script>
+  <script src="/static/job.js"></script>
+</body>
+</html>

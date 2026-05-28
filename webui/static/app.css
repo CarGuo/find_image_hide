@@ -1,0 +1,150 @@
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif; color: #1f2933; background: #f5f7fb; }
+a { color: #3457d5; text-decoration: none; }
+a:hover { text-decoration: underline; }
+
+.topbar {
+  background: #1f2933; color: #fff;
+  padding: 12px 24px; display: flex; align-items: baseline; gap: 16px;
+  box-shadow: 0 2px 4px rgba(0,0,0,.1);
+}
+.topbar h1 { font-size: 18px; margin: 0; font-weight: 600; }
+.topbar .muted { color: #aab2bd; font-size: 13px; }
+.topbar .back { color: #fff; }
+
+.container { max-width: 960px; margin: 24px auto; padding: 0 24px; }
+.container.wide { max-width: 1280px; }
+
+.card {
+  background: #fff; border-radius: 8px; padding: 20px 24px;
+  margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.06);
+}
+.card h2 { margin-top: 0; font-size: 16px; }
+
+.muted { color: #6b7480; }
+.small { font-size: 13px; }
+
+.form-row { margin: 10px 0; display: flex; align-items: center; gap: 10px; }
+.form-row.inline { gap: 24px; }
+.form-row label { min-width: 80px; }
+.form-row input[type=text] { flex: 1; padding: 8px 10px; border: 1px solid #ccd2d9; border-radius: 4px; font-size: 14px; }
+
+button.primary {
+  background: #3457d5; color: #fff; border: none; padding: 10px 20px;
+  border-radius: 4px; font-size: 14px; cursor: pointer;
+}
+button.primary:hover { background: #2845b3; }
+button.primary:disabled { background: #aab2bd; cursor: not-allowed; }
+
+.status { margin-top: 12px; font-size: 13px; color: #6b7480; }
+.status.error { color: #c43c3c; }
+
+.toolbar { display: flex; gap: 12px; margin-bottom: 12px; }
+.toolbar input, .toolbar select { padding: 6px 10px; border: 1px solid #ccd2d9; border-radius: 4px; font-size: 13px; }
+.toolbar input { flex: 1; }
+
+table.results { width: 100%; border-collapse: collapse; font-size: 13px; }
+table.results th, table.results td { padding: 8px 10px; border-bottom: 1px solid #e5e8ed; text-align: left; }
+table.results th { background: #f0f3f7; font-weight: 600; }
+table.results tbody tr:hover { background: #f7f9fc; }
+
+.badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+.badge.HIGH { background: #fde2e2; color: #c43c3c; }
+.badge.MEDIUM { background: #fff3cf; color: #b07d00; }
+.badge.LOW { background: #d4edda; color: #2c7a3d; }
+.badge.UNKNOWN { background: #e0e3e8; color: #555f6e; }
+.badge.ERROR { background: #444; color: #fff; }
+
+.stats { margin-top: 8px; display: flex; gap: 12px; flex-wrap: wrap; }
+.stats .stat { background: #f0f3f7; padding: 6px 12px; border-radius: 4px; font-size: 12px; }
+
+.overview-grid { display: grid; grid-template-columns: 360px 1fr; gap: 24px; }
+.preview img { max-width: 100%; max-height: 360px; border: 1px solid #e0e3e8; border-radius: 4px; }
+.kv { display: grid; grid-template-columns: 180px 1fr; gap: 4px 12px; font-size: 13px; }
+.kv .k { color: #6b7480; }
+.kv .v { word-break: break-all; }
+
+.tabs { display: flex; gap: 4px; margin-bottom: 0; flex-wrap: wrap; }
+.tabs button { background: #fff; border: 1px solid #e0e3e8; border-bottom: none; padding: 8px 14px; cursor: pointer; font-size: 13px; border-radius: 4px 4px 0 0; position: relative; }
+.tabs button.active { background: #fff; border-color: #3457d5; color: #3457d5; font-weight: 600; }
+.tabs button:not(.active) { background: #f0f3f7; }
+
+/* tab 按钮的风险色 —— 哪个模块有问题，对应 tab 就被染色 */
+.tabs button.risk-HIGH    { border-top: 3px solid #c43c3c; background: #fde2e2; color: #8a1f1f; }
+.tabs button.risk-MEDIUM  { border-top: 3px solid #d69400; background: #fff3cf; color: #8a6500; }
+.tabs button.risk-LOW     { border-top: 3px solid #2c7a3d; background: #e9f6ec; color: #20532b; }
+.tabs button.risk-UNKNOWN { border-top: 3px solid #aab2bd; }
+.tabs button.risk-HIGH.active   { background: #fff; color: #c43c3c; border-color: #c43c3c #c43c3c #fff #c43c3c; border-top-width: 3px; }
+.tabs button.risk-MEDIUM.active { background: #fff; color: #b07d00; border-color: #d69400 #d69400 #fff #d69400; border-top-width: 3px; }
+.tabs button.risk-LOW.active    { background: #fff; color: #2c7a3d; border-color: #2c7a3d #2c7a3d #fff #2c7a3d; border-top-width: 3px; }
+
+/* tab 按钮上的小圆点指示器（HIGH/MEDIUM 时更醒目） */
+.tabs button.risk-HIGH::after,
+.tabs button.risk-MEDIUM::after {
+  content: ""; display: inline-block; width: 8px; height: 8px; border-radius: 50%;
+  margin-left: 6px; vertical-align: middle;
+}
+.tabs button.risk-HIGH::after   { background: #c43c3c; }
+.tabs button.risk-MEDIUM::after { background: #d69400; }
+
+.tab-pane { border-radius: 0 4px 4px 4px; }
+.hidden { display: none !important; }
+
+/* 通俗解释卡片：图标 + 黄色背景，跟主分析区分开 */
+.explain {
+  background: #fff8e1; border-left: 4px solid #f5b400;
+  padding: 10px 14px; margin: 8px 0 16px; border-radius: 4px;
+  font-size: 13px; line-height: 1.55; color: #5b4708;
+}
+.explain strong { color: #3a2e08; }
+.explain code { background: #fff; padding: 1px 4px; border-radius: 2px; }
+
+/* 友好的"模块未启用 / 未配置"提示卡 */
+.notice {
+  background: #eef3ff; border-left: 4px solid #3457d5;
+  padding: 12px 14px; margin: 8px 0 12px; border-radius: 4px;
+  font-size: 13px; line-height: 1.6; color: #1f2933;
+}
+.notice .title { font-weight: 600; margin-bottom: 4px; color: #3457d5; }
+.notice code { background: #fff; padding: 1px 4px; border-radius: 2px; }
+.notice ul, .notice ol { margin: 6px 0 0 18px; padding: 0; }
+.notice li { margin: 2px 0; }
+
+.vis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
+.vis-grid figure { margin: 0; }
+.vis-grid figure img { width: 100%; border: 1px solid #e0e3e8; border-radius: 4px; background: #000; }
+.vis-grid figcaption { font-size: 12px; color: #6b7480; text-align: center; margin-top: 4px; }
+
+pre.json { background: #1f2933; color: #f5f7fb; padding: 12px; border-radius: 4px; font-size: 12px; overflow: auto; max-height: 500px; }
+
+.evidence-item { padding: 10px 12px; border-left: 4px solid #ccd2d9; margin-bottom: 8px; background: #f7f9fc; }
+.evidence-item.warning { border-left-color: #b07d00; }
+.evidence-item.error { border-left-color: #c43c3c; }
+.evidence-item .title { font-weight: 600; margin-bottom: 4px; }
+.evidence-item .meta { font-size: 11px; color: #6b7480; margin-top: 4px; }
+
+/* 首页拖拽上传区 */
+.dropzone {
+  border: 2px dashed #aab2bd; border-radius: 8px; padding: 28px 20px;
+  text-align: center; background: #f7f9fc; color: #6b7480;
+  cursor: pointer; transition: all .15s ease-in-out;
+  user-select: none;
+}
+.dropzone:hover { background: #eef3ff; border-color: #3457d5; color: #3457d5; }
+.dropzone:focus { outline: 2px solid #3457d5; outline-offset: 2px; }
+.dropzone.dragover { background: #eaf2ff; border-color: #3457d5; color: #1f3da6; box-shadow: inset 0 0 0 2px #3457d5; }
+.dropzone.busy { opacity: .6; cursor: progress; }
+.dz-inner .dz-title { font-size: 15px; font-weight: 600; color: #1f2933; margin-bottom: 4px; }
+.dropzone.dragover .dz-title { color: #1f3da6; }
+.dz-inner .dz-hint { margin-top: 4px; }
+
+/* 上传进度条 */
+.progress { margin-top: 12px; }
+.progress .bar {
+  width: 100%; height: 8px; background: #e0e3e8; border-radius: 4px; overflow: hidden;
+}
+.progress .bar-fill {
+  height: 100%; width: 0%; background: linear-gradient(90deg, #3457d5, #5b7df0);
+  transition: width .15s ease-out;
+}
+.progress-text { margin-top: 4px; }

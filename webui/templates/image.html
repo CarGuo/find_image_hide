@@ -1,0 +1,60 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>图片详情</title>
+  <link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="/jobs/{{ job_id }}" class="back">&larr; 返回列表</a>
+    <h1 id="title">图片详情</h1>
+  </header>
+
+  <main class="container wide">
+    <section class="card" id="overview-card">
+      <h2>Overview</h2>
+      <div class="overview-grid">
+        <div class="preview">
+          <img id="preview-img" alt="preview" />
+        </div>
+        <div id="overview-list"></div>
+      </div>
+    </section>
+
+    <nav class="tabs">
+      <button data-tab="extraction" class="active">隐藏内容提取</button>
+      <button data-tab="copyright">版权 / 图库</button>
+      <button data-tab="steg">隐写检测</button>
+      <button data-tab="metadata">元数据</button>
+      <button data-tab="ai">AI 来源</button>
+      <button data-tab="fft">频域 (FFT)</button>
+      <button data-tab="dct">DCT 频域</button>
+      <button data-tab="lsb">LSB 位平面</button>
+      <button data-tab="noise">噪声残差</button>
+      <button data-tab="ela">ELA 误差</button>
+      <button data-tab="evidence">证据汇总</button>
+      <button data-tab="raw">原始 JSON</button>
+    </nav>
+
+    <section class="card tab-pane" id="tab-extraction"></section>
+    <section class="card tab-pane hidden" id="tab-copyright"></section>
+    <section class="card tab-pane hidden" id="tab-steg"></section>
+    <section class="card tab-pane hidden" id="tab-metadata"></section>
+    <section class="card tab-pane hidden" id="tab-ai"></section>
+    <section class="card tab-pane hidden" id="tab-fft"></section>
+    <section class="card tab-pane hidden" id="tab-dct"></section>
+    <section class="card tab-pane hidden" id="tab-lsb"></section>
+    <section class="card tab-pane hidden" id="tab-noise"></section>
+    <section class="card tab-pane hidden" id="tab-ela"></section>
+    <section class="card tab-pane hidden" id="tab-evidence"></section>
+    <section class="card tab-pane hidden" id="tab-raw"></section>
+  </main>
+
+  <script>
+    const JOB_ID = "{{ job_id }}";
+    const SLUG = "{{ slug }}";
+  </script>
+  <script src="/static/image.js"></script>
+</body>
+</html>
