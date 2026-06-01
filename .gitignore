@@ -28,6 +28,9 @@ _check_html/
 tools/test_images/
 tools/phash_reference/
 tools/regression_results.json
+# 干净基线回归脚本生成的合成图 + JSON 报告（重跑即生成，不入库）
+tools/regression_clean_baseline/images/
+tools/regression_clean_baseline/reports/
 
 # SynthID enhance: cloned upstream sources + binary codebooks (re-fetched on demand)
 .cache/

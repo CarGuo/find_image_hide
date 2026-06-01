@@ -197,7 +197,13 @@ def analyze_steganalysis(path: Path, is_lossy: bool) -> dict[str, Any]:
         risk = "LOW"
     elif spa_very_strong or (spa_strong and chi_pov_strong) or consensus_high:
         risk = "HIGH"
-    elif spa_max >= 0.10 or (chi_pov_strong and chi_prefix_strong):
+    elif spa_max >= 0.10:
+        # SPA 单信号 ≥ 0.10 已经是较明确的嵌入信号，可以独立升 MEDIUM
+        risk = "MEDIUM"
+    elif chi_pov_strong and chi_prefix_strong and spa_max >= 0.05:
+        # 卡方 PoV + 滑动前缀这两个检测器在合成 PNG / 平滑无损图上高度相关，
+        # 都能轻易撞到 P~1（Westfeld 1999 论文已警告），所以必须配合 SPA ≥ 0.05
+        # 这个独立信号才允许升 MEDIUM。否则纯净 PNG 会持续误报为 MEDIUM。
         risk = "MEDIUM"
     else:
         risk = "LOW"
