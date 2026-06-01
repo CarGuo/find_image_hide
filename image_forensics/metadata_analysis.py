@@ -422,4 +422,174 @@ def collect_metadata(path: Path) -> dict[str, Any]:
     result["metadata_stock_hits"] = stock_hits
     result["metadata_stock_keywords"] = sorted({h["keyword"] for h in stock_hits})
     result["stock_image_match"] = "HIGH" if stock_hits else "NONE"
+
+    # --- 用户在 EXIF / XMP / PNG-text 里写的"自定义短字符串载荷" ---
+    # 典型场景：CTF / 测试图把 flag / GSY / 自定义 tag 放在 Software / Artist /
+    # ImageDescription / dc:creator 等元数据字段里。这跟 LSB / trailing data 同
+    # 等重要，但之前没有在主页面 evidence 里高亮，导致用户感觉"没读出来"。
+    payload_hits = _collect_user_payload_strings(result["raw"])
+    result["user_payload_strings"] = payload_hits
+    result["evidence_items"] = _build_metadata_evidence(payload_hits, result)
     return result
+
+
+# 已知的合法器件 / 软件值，这些不是"用户埋的载荷"，不报。
+_KNOWN_SOFTWARE_PREFIXES = (
+    "adobe", "photoshop", "lightroom", "gimp", "darktable", "capture one",
+    "snapseed", "vsco", "affinity", "luminar", "skylum",
+    "iphone", "ipad", "ios ", "android ", "huawei", "xiaomi", "samsung",
+    "google", "pixel", "oneplus", "vivo", "oppo", "honor", "sony", "canon",
+    "nikon", "fujifilm", "olympus", "pentax", "panasonic", "leica", "ricoh",
+    "windows", "macos", "darwin", "linux", "ffmpeg", "imagemagick", "exiftool",
+    "pillow", "skia", "image converter", "hpscan",
+)
+
+
+def _looks_like_user_payload(field_path: str, value: str) -> bool:
+    """是否像"用户故意往元数据里写的小载荷"，而不是相机/软件正常生成的字段。"""
+    if not value:
+        return False
+    s = value.strip()
+    if not s:
+        return False
+    # 太长不像载荷（XMP packet / 长描述）；纯空格 / 纯标点过滤掉
+    if len(s) > 80:
+        return False
+    # 排除 EXIF 自身二进制 chunk（被 PIL 当 png_text 暴露出来）
+    if "\x00" in s and len(s) > 16:
+        return False
+    # 已知设备 / 软件名前缀
+    low = s.lower()
+    for pref in _KNOWN_SOFTWARE_PREFIXES:
+        if low.startswith(pref):
+            return False
+    # 看起来像日期戳 "2024:01:02 03:04:05"
+    if len(s) >= 10 and s[4] in (":", "-") and s[7] in (":", "-"):
+        return False
+    # 纯数字 / 浮点（曝光、ISO 等）
+    try:
+        float(s)
+        return False
+    except ValueError:
+        pass
+    # XMP / dc / xmpRights / photoshop / plus 域里凡是 短文本 都视为可能的载荷
+    interesting_tail = field_path.lower().rsplit(".", 1)[-1]
+    interesting_keywords = (
+        "title", "creator", "artist", "author", "description", "comment",
+        "usercomment", "imagedescription", "software", "creatortool",
+        "make", "model", "rights", "credit", "source", "keywords",
+        "subject", "label", "rating", "instructions", "headline",
+        "parameters",  # AUTOMATIC1111 / ComfyUI 把 prompt 写这里
+    )
+    if any(k in interesting_tail for k in interesting_keywords):
+        return True
+    # 在 png_text.* 里出现的短自定义 keyword 也都展示
+    if field_path.startswith("png_text."):
+        return True
+    return False
+
+
+def _collect_user_payload_strings(raw: dict[str, Any]) -> list[dict[str, Any]]:
+    """从 EXIF / XMP / PNG-text / IPTC 里抽取所有"看起来是用户埋的"短字符串。"""
+    hits: list[dict[str, Any]] = []
+    seen: set[tuple[str, str]] = set()
+
+    # 只在最常见的元数据子树里扫，避免把 raw 里的二进制 dump 也收进来
+    for branch in ("exif", "iptc_full", "xmp_copyright", "png_text"):
+        node = raw.get(branch)
+        if not node:
+            continue
+        for path, value in _walk_fields(node, prefix=branch):
+            if not isinstance(value, str):
+                value = str(value)
+            if not _looks_like_user_payload(path, value):
+                continue
+            key = (path, value)
+            if key in seen:
+                continue
+            seen.add(key)
+            hits.append({"field": path, "value": value, "length": len(value)})
+
+    # XMP 主 blob 里再用正则抓 dc:title / dc:creator / dc:description 等明文标签
+    xmp_blob = raw.get("xmp")
+    if isinstance(xmp_blob, str):
+        patterns = {
+            "xmp.dc:title": r"<dc:title>.*?<rdf:li[^>]*>([^<]+)</rdf:li>",
+            "xmp.dc:creator": r"<dc:creator>.*?<rdf:li[^>]*>([^<]+)</rdf:li>",
+            "xmp.dc:description": r"<dc:description>.*?<rdf:li[^>]*>([^<]+)</rdf:li>",
+            "xmp.exif:UserComment": r"<exif:UserComment>.*?<rdf:li[^>]*>([^<]+)</rdf:li>",
+            "xmp.xmp:CreatorTool": r"<xmp:CreatorTool>([^<]+)</xmp:CreatorTool>",
+            "xmp.xmp:Label": r'xmp:Label="([^"]+)"',
+            "xmp.photoshop:Headline": r'photoshop:Headline="([^"]+)"',
+        }
+        for label, pat in patterns.items():
+            try:
+                m = re.search(pat, xmp_blob, flags=re.IGNORECASE | re.DOTALL)
+                if not m:
+                    continue
+                v = m.group(1).strip()
+                if not _looks_like_user_payload(label, v):
+                    continue
+                key = (label, v)
+                if key in seen:
+                    continue
+                seen.add(key)
+                hits.append({"field": label, "value": v, "length": len(v)})
+            except Exception:
+                pass
+
+    return hits
+
+
+def _build_metadata_evidence(
+    payload_hits: list[dict[str, Any]], result: dict[str, Any]
+) -> list[dict[str, Any]]:
+    """把 metadata 子模块产出的发现物聚合成 evidence_items 给主报告。"""
+    items: list[dict[str, Any]] = []
+    if payload_hits:
+        # 同一个值出现在多个字段里时，按值聚合一行更清楚
+        by_value: dict[str, list[str]] = {}
+        for h in payload_hits:
+            by_value.setdefault(h["value"], []).append(h["field"])
+        for value, fields in by_value.items():
+            preview = value if len(value) <= 64 else value[:61] + "..."
+            items.append({
+                "module": "metadata",
+                "severity": "warning",
+                "title": f"在元数据里读到自定义字符串：{preview!r}",
+                "description": (
+                    f"该字符串出现在以下字段中：{', '.join(fields)}；"
+                    "这些字段（Software / Artist / dc:creator / Description 等）允许任意写入，"
+                    "通常用于 CTF 测试图、自定义水印、AI 生成器溯源标记。"
+                ),
+                "confidence": 0.6,
+            })
+    if result.get("metadata_ai_keywords"):
+        kws = result["metadata_ai_keywords"]
+        items.append({
+            "module": "metadata",
+            "severity": "warning",
+            "title": f"元数据里出现 AI 生成器关键字（{len(kws)} 项）",
+            "description": "命中关键字：" + "、".join(kws),
+            "confidence": 0.5,
+        })
+    if result.get("metadata_stock_hits"):
+        kws = sorted({h["keyword"] for h in result["metadata_stock_hits"]})
+        items.append({
+            "module": "metadata",
+            "severity": "high",
+            "title": f"元数据里出现版权图库 / 水印厂商特征（{len(kws)} 项）",
+            "description": "命中关键字：" + "、".join(kws),
+            "confidence": 0.8,
+        })
+    cs = result.get("copyright_summary") or {}
+    if cs.get("has_explicit_copyright"):
+        fields = list((cs.get("fields") or {}).keys())
+        items.append({
+            "module": "metadata",
+            "severity": "info",
+            "title": "元数据声明了明确的版权 / 作者信息",
+            "description": "字段：" + "、".join(fields[:8]) + (" ..." if len(fields) > 8 else ""),
+            "confidence": 0.4,
+        })
+    return items

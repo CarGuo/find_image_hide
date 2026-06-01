@@ -141,6 +141,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
 
     all_evidence: list[dict[str, Any]] = []
     for module_name, module in (
+        ("metadata", meta),
         ("fft", fft), ("dct", dct), ("lsb", lsb), ("noise", noise),
         ("steganalysis", steg), ("extraction", ext), ("ela", ela),
         ("visible_watermark", visible_wm), ("invisible_watermark", invisible_wm),

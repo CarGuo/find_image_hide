@@ -173,6 +173,21 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     if meta.get("metadata_stock_hits"):
         kws = "、".join(sorted({h["keyword"] for h in meta["metadata_stock_hits"]}))
         summary_parts.append(f"元数据中带有版权图库特征字段：{kws}。")
+    payload_strs = meta.get("user_payload_strings") or []
+    if payload_strs:
+        # 按值聚合
+        unique_vals: list[str] = []
+        seen_vals: set[str] = set()
+        for h in payload_strs:
+            v = h.get("value")
+            if v and v not in seen_vals:
+                seen_vals.add(v)
+                unique_vals.append(v)
+        preview = "、".join(repr(v) for v in unique_vals[:5])
+        summary_parts.append(
+            f"在元数据可写字段（Software / Artist / dc:creator 等）里读到自定义字符串：{preview}"
+            f"{'…' if len(unique_vals) > 5 else ''}。"
+        )
     if forged_copyright_signal:
         ai_kws = "、".join(meta.get("metadata_ai_keywords") or [])
         summary_parts.append(
