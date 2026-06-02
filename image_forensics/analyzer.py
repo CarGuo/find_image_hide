@@ -10,7 +10,9 @@ from pathlib import Path
 from typing import Any
 
 from .ai_provenance_analysis import analyze_ai_provenance
+from .ai_heuristics import analyze_ai_heuristics
 from .basic_info import collect_basic_info
+from .copy_move_analysis import analyze_copy_move
 from .dct_analysis import analyze_dct
 from .ela import analyze_ela
 from .extraction import analyze_extraction
@@ -116,6 +118,18 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         invisible_wm = {"status": "ERROR", "risk_level": "UNKNOWN", "score": 0.0, "decoded": [], "evidence_items": [], "error": str(exc)}
         errors.append(f"invisible_watermark: {exc}")
 
+    try:
+        copy_move = analyze_copy_move(input_path, vis_dir)
+    except Exception as exc:
+        copy_move = {"risk_level": "UNKNOWN", "copy_move_score": 0.0, "error": str(exc), "evidence_items": []}
+        errors.append(f"copy_move: {exc}\n{traceback.format_exc()}")
+
+    try:
+        ai_heur = analyze_ai_heuristics(input_path)
+    except Exception as exc:
+        ai_heur = {"risk_level": "UNKNOWN", "ai_heuristics_score": 0.0, "error": str(exc), "evidence_items": []}
+        errors.append(f"ai_heuristics: {exc}")
+
     report: dict[str, Any] = {
         "schema_version": "0.3.0",
         "tool_name": "Image Forensics Inspector",
@@ -134,6 +148,8 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         "visible_watermark": visible_wm,
         "invisible_watermark": invisible_wm,
         "phash_match": phash,
+        "copy_move": copy_move,
+        "ai_heuristics": ai_heur,
         "errors": errors,
     }
     overall = aggregate(report)
@@ -146,6 +162,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         ("steganalysis", steg), ("extraction", ext), ("ela", ela),
         ("visible_watermark", visible_wm), ("invisible_watermark", invisible_wm),
         ("phash_match", phash),
+        ("copy_move", copy_move), ("ai_heuristics", ai_heur),
     ):
         for item in module.get("evidence_items", []) or []:
             all_evidence.append({**item, "module": item.get("module", module_name)})

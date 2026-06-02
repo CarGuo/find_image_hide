@@ -29,6 +29,8 @@ def summarize(report: dict) -> dict:
     ext = report.get("extraction", {}) or {}
     steg = report.get("steganalysis", {}) or {}
     lsb = report.get("lsb_analysis", {}) or {}
+    cm = report.get("copy_move", {}) or {}
+    aih = report.get("ai_heuristics", {}) or {}
     return {
         "overall_risk": overall.get("risk_level"),
         "overall_confidence": overall.get("confidence"),
@@ -60,6 +62,10 @@ def summarize(report: dict) -> dict:
         "steganalysis_score": steg.get("steganalysis_score"),
         "lsb_risk": lsb.get("risk_level"),
         "lsb_score": lsb.get("lsb_anomaly_score"),
+        "copy_move_risk": cm.get("risk_level"),
+        "copy_move_score": cm.get("copy_move_score"),
+        "ai_heuristics_risk": aih.get("risk_level"),
+        "ai_heuristics_score": aih.get("ai_heuristics_score"),
     }
 
 

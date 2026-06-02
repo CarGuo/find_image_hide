@@ -29,13 +29,18 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     vis_wm = report.get("visible_watermark", {})
     inv_wm = report.get("invisible_watermark", {})
     phash = report.get("phash_match", {})
+    copy_move = report.get("copy_move", {})
+    ai_heur = report.get("ai_heuristics", {})
 
     # Weights: industry-standard steganalysis (chi-square / SPA) and direct
     # extraction findings dominate, since they are *evidence* rather than
     # heuristics. FFT/DCT/LSB-entropy are weak supporting signals.
+    # P1 additions:
+    #   - copy_move    : 0.06 -- structural evidence, but LOW base rate
+    #   - ai_heuristics: 0.04 -- weak channel-stat hint, never solo HIGH
     weights = {
-        "extraction": 0.28,
-        "steganalysis": 0.18,
+        "extraction": 0.26,
+        "steganalysis": 0.16,
         "fft": 0.04,
         "dct": 0.04,
         "lsb": 0.04 if is_lossy else 0.08,
@@ -43,9 +48,11 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         "ela": 0.04,
         "metadata": 0.05,
         "provenance": 0.10,
-        "visible_watermark": 0.10,
-        "invisible_watermark": 0.10,
-        "phash_match": 0.10,
+        "visible_watermark": 0.08,
+        "invisible_watermark": 0.08,
+        "phash_match": 0.08,
+        "copy_move": 0.06,
+        "ai_heuristics": 0.04,
     }
 
     meta_score = 0.0
@@ -78,6 +85,8 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         + weights["visible_watermark"] * float(vis_wm.get("ocr_score", 0.0))
         + weights["invisible_watermark"] * float(inv_wm.get("score", 0.0))
         + weights["phash_match"] * float(phash.get("phash_score", 0.0))
+        + weights["copy_move"] * float(copy_move.get("copy_move_score", 0.0))
+        + weights["ai_heuristics"] * float(ai_heur.get("ai_heuristics_score", 0.0))
     )
     confidence = float(min(1.0, max(0.0, raw)))
 
@@ -93,6 +102,8 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         vis_wm.get("risk_level", "LOW"),
         inv_wm.get("risk_level", "LOW"),
         phash.get("risk_level", "LOW"),
+        copy_move.get("risk_level", "LOW"),
+        ai_heur.get("risk_level", "LOW"),
     ]
     high_count = sum(1 for l in levels if l == "HIGH")
     med_count = sum(1 for l in levels if l == "MEDIUM")
@@ -132,6 +143,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         or vis_wm.get("risk_level") == "HIGH"
         or inv_wm.get("risk_level") == "HIGH"
         or phash.get("risk_level") == "HIGH"
+        or copy_move.get("risk_level") == "HIGH"
         or forged_copyright_signal
     )
     if direct_high:
@@ -239,6 +251,19 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     if ela.get("risk_level") in ("MEDIUM", "HIGH"):
         lvl_cn = {"MEDIUM": "中风险", "HIGH": "高风险"}[ela.get("risk_level")]
         summary_parts.append(f"ELA 误差水平异常，疑似存在重压缩 / 拼接区域（{lvl_cn}）。")
+    if copy_move.get("risk_level") in ("MEDIUM", "HIGH"):
+        lvl_cn = {"MEDIUM": "中风险", "HIGH": "高风险"}[copy_move.get("risk_level")]
+        snr = float(copy_move.get("shift_snr", 0.0))
+        summary_parts.append(
+            f"Copy-Move 检测命中：同一图内大量块共享相同位移向量（SNR={snr:.1f}，{lvl_cn}），"
+            "疑似复制粘贴篡改。"
+        )
+    if ai_heur.get("risk_level") in ("MEDIUM", "HIGH"):
+        score = float(ai_heur.get("ai_heuristics_score", 0.0))
+        summary_parts.append(
+            f"颜色 / 高频启发式提示该图可能由扩散模型生成（启发式分 {score:.2f}）；"
+            "请结合 C2PA / 元数据综合判断，单独不足以认定。"
+        )
     if not summary_parts:
         summary_parts.append(
             "未发现明显的水印 / 隐写 / AI 痕迹，但请注意：检测不到不等于一定不存在。"
@@ -264,6 +289,8 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
             "visible_watermark": float(vis_wm.get("ocr_score", 0.0)),
             "invisible_watermark": float(inv_wm.get("score", 0.0)),
             "phash_match": float(phash.get("phash_score", 0.0)),
+            "copy_move": float(copy_move.get("copy_move_score", 0.0)),
+            "ai_heuristics": float(ai_heur.get("ai_heuristics_score", 0.0)),
         },
         "limitations": [
             "本工具不能证明一张图绝对没有水印 / 隐写。",
