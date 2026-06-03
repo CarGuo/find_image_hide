@@ -13,13 +13,14 @@
 
   <main class="container wide">
     <section class="card" id="overview-card">
-      <h2>Overview</h2>
+      <h2>Overview <button id="export-pdf-btn" class="export-pdf-btn" type="button" title="导出可重现司法级 PDF（P2.4）">导出 PDF</button></h2>
       <div class="overview-grid">
         <div class="preview">
           <img id="preview-img" alt="preview" />
         </div>
         <div id="overview-list"></div>
       </div>
+      <div id="export-pdf-status" class="export-pdf-status muted"></div>
     </section>
 
     <section class="card" id="reverse-search-card">

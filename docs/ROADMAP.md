@@ -106,11 +106,12 @@
 
 **P2.3** ⭐⭐ ✅ **2026-06-03 完成** — 新建 [format_decoder.py](file:///d:/workspace/project/find_image_hide/image_forensics/format_decoder.py)：HEIC / AVIF / RAW 三软依赖统一入口 `open_any(path)`。AVIF 直接走 Pillow ≥11.3 内置 libavif（**零新依赖**），HEIC 通过 `pillow-heif.register_heif_opener()` 一次性注册到 Pillow，RAW 通过 `rawpy.imread().postprocess()` 解 demosaic 包成 `Image.fromarray(format='RAW')`。`decoder_status()` 返回三组探测结果（available / version / error / package）便于 `/api/diagnostics` 与单测断言。已在 [utils.safe_open_rgb](file:///d:/workspace/project/find_image_hide/image_forensics/utils.py)、[basic_info](file:///d:/workspace/project/find_image_hide/image_forensics/basic_info.py)、[extraction](file:///d:/workspace/project/find_image_hide/image_forensics/extraction.py)、[metadata_analysis](file:///d:/workspace/project/find_image_hide/image_forensics/metadata_analysis.py)、[ai_provenance_analysis](file:///d:/workspace/project/find_image_hide/image_forensics/ai_provenance_analysis.py)、[ai_heuristics](file:///d:/workspace/project/find_image_hide/image_forensics/ai_heuristics.py)、[visible_watermark_ocr](file:///d:/workspace/project/find_image_hide/image_forensics/visible_watermark_ocr.py)、[invisible_watermark_detect](file:///d:/workspace/project/find_image_hide/image_forensics/invisible_watermark_detect.py)、[phash_match](file:///d:/workspace/project/find_image_hide/image_forensics/phash_match.py) 全面替换 `Image.open(path)`；同步扩展 [webapp.py](file:///d:/workspace/project/find_image_hide/webapp.py) `SUPPORTED_IMAGE_EXTS` 与 [app.js](file:///d:/workspace/project/find_image_hide/webui/static/app.js) `SUPPORTED_EXTS`，覆盖 .heic/.heif/.avif 与 11 种主流相机 RAW 后缀。
 
+**P2.4** ⭐⭐ ✅ **2026-06-03 完成** — 新建 [pdf_report.py](file:///d:/workspace/project/find_image_hide/image_forensics/pdf_report.py)：软依赖 `reportlab`，统一入口 `render_pdf(report.json, output_pdf, viz_dir, image_path)` 返回 manifest dict（`pdf_sha256 / source_report_sha256 / generated_at / backend_version`）。**核心承诺：字节级可重现** — 同一份 report.json 重复渲染产出 SHA-256 完全一致的 PDF（reportlab `invariant=1` + PDF metadata 时间戳从 `report["created_at"]` stamp）。webapp 暴露 `/api/jobs/<id>/image/<slug>/report.pdf`（HTTP 头 `X-Pdf-Sha256` / `X-Source-Sha256` / `X-Pdf-Backend`）+ `/api/pdf/status` 探测端点。前端 [image.html](file:///d:/workspace/project/find_image_hide/webui/templates/image.html) overview-card 内嵌"导出 PDF"按钮，由 [image.js](file:///d:/workspace/project/find_image_hide/webui/static/image.js) 的 `bindPdfExport` 处理：未装 reportlab 时禁用按钮且文案提示 `pip install reportlab`，避免 501 噪声。PDF 内容含综合概览 / 15 模块分项 / 30 条证据 / 6 张可视化图证 / 可重现性凭据页（含 SHA-256 + 数字签名占位）；CJK 用 reportlab 内置 CID 字体 STSong-Light，零外部 TTF。
+
 ### 🎯 P2 — 后续待办
 
 - Deepfake 人脸检测（DeepFake-O-Meter 风格软依赖）
 - PRNU 相机指纹
-- 报告导出 PDF / 司法级"可重现报告"
 
 ---
 
@@ -176,6 +177,24 @@
 - **测试样本去假阳性**：第一版 `Image.new('RGB',(320,240),'white')` + 渐变填充导致 ai_heuristics_score=1.0（hf_residual_std≈0、hue 单 bin），把 normal_avif/normal_webp 推到 MEDIUM 假阳性。**第二版**用 `Image.open('tools/test_images/normal_jpeg.jpg').convert('RGB')` 重编码到 AVIF/WEBP — 真实照片的频域统计与色相分布让 ai_score 落到 0.42-0.48 区间，overall=LOW
 - **回归证据**：3 路并行 — run_regression 16 张全过（normal_png=HIGH 是 P2.3 之前已存在的样本本身被嵌入 LSB，与本轮无关，已 `git stash` 回 `3140616` 验证）+ webapp HTTP E2E 5/5（jpg/png/webp/avif/ai_metadata 全 errors=0，risk_counts={HIGH:2,LOW:3}，每张 image.html 仍含 `reverse-search-card`）+ 模块单测 5/5（open_any AVIF/WEBP / decoder_status 三键 / is_extra_format 大小写 / is_raw / monkey-patch HEIC missing 触发 UnsupportedFormatError 含 "pillow-heif" hint）
 - **跨平台**：本机 Pillow 11.3.0 + native AVIF；macOS/Linux 用户若 Pillow <11.3 可走 `pip install pillow-avif-plugin` 回退路径（format_decoder 自动探测）；HEIC/RAW 在三平台均依赖 `pillow-heif` / `rawpy` 的预编译 wheel（PyPI 已覆盖 Win/macOS/Linux × Py 3.9-3.13）
+
+### 2026-06-03（P2.4 司法级可重现 PDF 报告）
+
+- **软依赖范式（第四次复用）**：与 P1.5 c2pa_check / P1.2 steganalysis_external / P2.3 format_decoder 完全同构 — import-time probe + `_REPORTLAB_AVAILABLE / _REPORTLAB_VERSION / _REPORTLAB_ERROR` 三元状态 + `pdf_status()` 自描述 + `PdfBackendUnavailableError(hint_pkg='reportlab')` 异常。本机零 reportlab 时模块仍可正常 import，调用 `render_pdf` 才抛 hint pip 安装命令的友好异常
+- **后端选型 reportlab vs weasyprint vs wkhtmltopdf**：选 **reportlab 4.5.1** —— ① 纯 Python wheel 三平台 × Py 3.9-3.13 全 PyPI 覆盖，无 GTK/Cairo/Pango 系统依赖（weasyprint 在 Win 上需要装 GTK runtime）；② **CID CJK 字体 STSong-Light / HeiseiMin-W3 随包内置**，零外部 TTF 文件分发，避免许可证麻烦；③ Platypus 高级原语（`SimpleDocTemplate` / `Paragraph` / `Table` / `Image` / `Spacer`）足够画司法级排版；④ **支持 `invariant=1`** —— 这是字节级可重现的关键开关
+- **核心承诺：字节级可重现**（content-addressable PDF）：
+  - reportlab `SimpleDocTemplate(invariant=1)` 关闭随机 ObjectID + 关闭压缩流的随机 padding
+  - PDF metadata 时间戳从 `report["created_at"]` 解析（含 `Z`→`+00:00` 兼容），fallback `datetime.now(timezone.utc)`；author/subject/creator/producer 全部写死字符串
+  - 同一份 report.json 重复渲染 → SHA-256 完全一致（实测 `6f04233059be...` 两次）
+  - 这是司法证据链（chain-of-custody）的根本要求：律师/法官/对方专家都能拿同一份 report.json 自行重建得到字节级一致的 PDF，确认作证未被篡改
+- **content-addressable manifest**：`render_pdf()` 返回 `{pdf_path, pdf_sha256, source_report_sha256, generated_at, backend, backend_version, pdf_size_bytes}`；HTTP 响应通过 `X-Pdf-Sha256` / `X-Source-Sha256` / `X-Pdf-Backend` 三个 header 暴露给前端，前端 `bindPdfExport` 在状态行展示 SHA-256 截断（前 12 字符）让用户立即可视
+- **隐私保护**：PDF 不嵌入用户的绝对路径（输入路径仅参与 sha256 计算并保留 file_name + sha256 截断显示），避免分享 PDF 时泄露主目录结构 / 桌面用户名 / 工作目录命名习惯
+- **CJK 字体三层回退**：`pdfmetrics.registerFont(UnicodeCIDFont("STSong-Light"))` → 失败回退 HeiseiMin-W3 → 再失败回退 Helvetica（不显示中文但不崩）。**正常路径走 STSong-Light**，本机/macOS/Linux 都通
+- **PDF 4 节结构**：① 综合概览（封面 + 风险等级红黄绿色条 + 文件 sha256）/ ② 15 模块分项表（来自 `_MODULE_LABEL` 字典：基本信息 / EXIF/IPTC / AI 来源 / Watermark / LSB / Copy-Move / Steganalysis / Extraction / phash / c2pa_check / external_steganalysis / ai_heuristics …）/ ③ 证据条目 top-30（`evidence_items`）/ ④ 可重现性凭据页（含 SHA-256 hex + invariant=1 标识 + **数字签名占位**：建议外部 `gpg --detach-sign` 或 Adobe Sign 二次签名）。后跟 `PageBreak` 引出可视化页：6 张优选图证（ela.png / spectrum.png / dct_histogram.png / lsb_b_p0.png / residual.png / laplacian.png）
+- **webapp 双路由 + 友好 501**：`/api/jobs/<id>/image/<slug>/report.pdf`（`send_file(..., as_attachment=True, download_name=f'forensic_report_{slug}.pdf')`）；`/api/pdf/status` 探测端点。`PdfBackendUnavailableError` 走 **501 Not Implemented**（语义准确：服务端识别请求但未配 backend）而非 500，前端能区分"软依赖缺失"vs"真实错误"；前端检测到 501 直接禁用按钮，避免重复尝试
+- **UI 不动主结构**：[image.html](file:///d:/workspace/project/find_image_hide/webui/templates/image.html) overview-card 内嵌"导出 PDF"按钮 + 状态行（不新加 card），与既有 12 tab + reverse-search-card 共存；[image.js](file:///d:/workspace/project/find_image_hide/webui/static/image.js) `bindPdfExport` 加在 main 函数末尾（不影响其他 13 个 render*）；[app.css](file:///d:/workspace/project/find_image_hide/webui/static/app.css) 加深灰按钮 #2c3e50 + hover #34495e + disabled #bdc3c7，与既有"已复制"按钮风格统一
+- **回归证据**：3 路并行 — 模块单测 6/6（pdf_status keys / 有效 PDF >50KB / **可重现 SHA-256 字节级一致** / source_report_sha256 与手动 hash 一致 / `_REPORTLAB_AVAILABLE=False` monkey-patch 抛 `PdfBackendUnavailableError` 含 `pip install reportlab` hint / 无 viz_dir 时仍产 7.5KB 最小 PDF）+ webapp HTTP E2E 14/14（multipart 上传 → 轮询 done → GET report.pdf 200 + Content-Type=application/pdf + body 前 5 字节 `%PDF-` + X-Pdf-Sha256 64 字符 hex + X-Pdf-Backend=`reportlab/4.5.1` + body sha256 与 header 一致 + size 736791 + **第二次下载 SHA-256 一致** + image.html 仍含 `export-pdf-btn` 与 `reverse-search-card`）+ run_regression 16/16 风险级别与 P2.3 commit 完全对齐，零回归
+- **跨平台**：reportlab 4.5.1 是纯 Python wheel，PyPI 三平台 × Py 3.9-3.13 全覆盖；CID CJK 字体随包内置不需外部 TTF；Windows + macOS 同等支持
 
 ---
 

@@ -792,4 +792,70 @@ $$(".tabs button").forEach(btn => {
   renderEvidence(report);
   renderRaw(report);
   colorizeTabs(report);
+  bindPdfExport(report);
 })();
+
+/**
+ * P2.4: bind the "导出 PDF" button. Probes /api/pdf/status first so the UI
+ * can show a friendly "未安装 reportlab" hint instead of just throwing 501.
+ * On success the response carries X-Pdf-Sha256 / X-Source-Sha256 so we can
+ * surface chain-of-custody info to the user inline.
+ */
+async function bindPdfExport(report) {
+  const btn = document.getElementById("export-pdf-btn");
+  const statusEl = document.getElementById("export-pdf-status");
+  if (!btn) return;
+
+  try {
+    const st = await fetch("/api/pdf/status").then(r => r.json());
+    if (!st.available) {
+      btn.disabled = true;
+      btn.title = `PDF 后端未安装：pip install ${st.package || "reportlab"}`;
+      if (statusEl) statusEl.textContent = `PDF 导出不可用：未安装 ${st.package || "reportlab"}（${st.error || "install via pip"}）`;
+      return;
+    }
+    if (statusEl) statusEl.textContent = `PDF 后端就绪：reportlab ${st.version || ""}`;
+  } catch (e) {
+    if (statusEl) statusEl.textContent = `PDF 状态探测失败：${e}`;
+  }
+
+  btn.addEventListener("click", async () => {
+    const original = btn.textContent;
+    btn.disabled = true;
+    btn.textContent = "正在生成 PDF…";
+    if (statusEl) statusEl.textContent = "调用 /api/jobs/.../report.pdf …";
+    try {
+      const url = `/api/jobs/${JOB_ID}/image/${encodeURIComponent(SLUG)}/report.pdf`;
+      const resp = await fetch(url);
+      if (!resp.ok) {
+        const j = await resp.json().catch(() => ({}));
+        const hint = j.hint || j.error || `HTTP ${resp.status}`;
+        if (statusEl) statusEl.textContent = `导出失败：${hint}`;
+        return;
+      }
+      const pdfSha = resp.headers.get("X-Pdf-Sha256") || "";
+      const srcSha = resp.headers.get("X-Source-Sha256") || "";
+      const backend = resp.headers.get("X-Pdf-Backend") || "";
+      const blob = await resp.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      const fname = (report.input && report.input.file_name) ? report.input.file_name : SLUG;
+      a.download = `forensic_report_${fname}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+      if (statusEl) {
+        statusEl.innerHTML =
+          `<strong>导出成功</strong> · 后端 ${escapeHtml(backend)} · ` +
+          `PDF SHA-256 <code>${escapeHtml(pdfSha.slice(0, 16))}…</code> · ` +
+          `Source SHA-256 <code>${escapeHtml(srcSha.slice(0, 16))}…</code>`;
+      }
+    } catch (e) {
+      if (statusEl) statusEl.textContent = `导出失败：${e}`;
+    } finally {
+      btn.disabled = false;
+      btn.textContent = original;
+    }
+  });
+}

@@ -10,7 +10,7 @@ import uuid
 from pathlib import Path
 from typing import Any
 
-from flask import Flask, abort, jsonify, render_template, request, send_from_directory
+from flask import Flask, abort, jsonify, render_template, request, send_file, send_from_directory
 
 from image_forensics.batch import analyze_directory
 
@@ -427,6 +427,69 @@ def api_image_report(job_id: str, slug: str):
     if not rj.exists():
         return jsonify({"error": "report missing"}), 404
     return jsonify(json.loads(rj.read_text(encoding="utf-8")))
+
+
+@app.route("/api/jobs/<job_id>/image/<slug>/report.pdf")
+def api_image_report_pdf(job_id: str, slug: str):
+    """P2.4: forensic-grade PDF export.
+
+    Soft dependency: if reportlab is not installed the endpoint returns 501
+    with an actionable hint instead of crashing the worker. The PDF itself
+    is content-addressable (manifest in the X-Pdf-Sha256 / X-Source-Sha256
+    response headers) so callers can verify chain-of-custody downstream.
+    """
+    out = _resolve_per_image_dir(job_id, slug)
+    rj = out / "report.json"
+    if not rj.exists():
+        return jsonify({"error": "report missing"}), 404
+
+    try:
+        from image_forensics.pdf_report import (
+            PdfBackendUnavailableError,
+            render_pdf,
+        )
+    except Exception as exc:
+        return jsonify({"error": f"pdf module import failed: {exc}"}), 500
+
+    pdf_path = out / "report.pdf"
+    viz_dir = out / "visualizations"
+    try:
+        manifest = render_pdf(rj, pdf_path, viz_dir=viz_dir if viz_dir.is_dir() else None)
+    except PdfBackendUnavailableError as exc:
+        return (
+            jsonify(
+                {
+                    "error": "pdf backend unavailable",
+                    "hint": str(exc),
+                    "package": exc.hint_pkg,
+                }
+            ),
+            501,
+        )
+    except Exception as exc:
+        return jsonify({"error": f"pdf render failed: {type(exc).__name__}: {exc}"}), 500
+
+    resp = send_file(
+        pdf_path,
+        mimetype="application/pdf",
+        as_attachment=True,
+        download_name=f"forensic_report_{slug}.pdf",
+    )
+    resp.headers["X-Pdf-Sha256"] = manifest["pdf_sha256"]
+    resp.headers["X-Source-Sha256"] = manifest["source_report_sha256"]
+    resp.headers["X-Pdf-Backend"] = f"reportlab/{manifest['backend_version']}"
+    return resp
+
+
+@app.route("/api/pdf/status")
+def api_pdf_status():
+    """Expose pdf_report.pdf_status() for the front-end so the UI can disable
+    the export button gracefully when reportlab is not installed."""
+    try:
+        from image_forensics.pdf_report import pdf_status
+        return jsonify(pdf_status())
+    except Exception as exc:
+        return jsonify({"available": False, "error": str(exc), "package": "reportlab"}), 200
 
 
 @app.route("/jobs/<job_id>/image/<slug>/vis/<path:filename>")
