@@ -17,6 +17,7 @@
 - 噪声残差：Gaussian residual、Laplacian、局部噪声不一致度；
 - ELA 误差水平分析：再压缩误差，定位拼接 / 修图区域；
 - 综合启发式风险评分：LOW / MEDIUM / HIGH / UNKNOWN，每个 tab 按风险染色。
+- **司法级可重现 PDF 报告**：单图详情页一键导出，**字节级可重现**（同 `report.json` 永远产同 SHA-256 PDF），含 6 张图证 + 30 条证据 + 数字签名占位，soft-dep `reportlab`，详见 [P2.4 验收清单](file:///d:/workspace/project/find_image_hide/docs/P2.4_ACCEPTANCE.md)。
 
 > **重要免责声明**
 > 本工具不能证明图片绝对包含或绝对没有水印，也不能证明图片绝对是或绝对不是 AI 生成。所有评分都是 heuristic，不构成法律鉴定结论。SynthID 不在常规 EXIF/XMP 中，本工具默认不做本地 SynthID 判定。
@@ -30,6 +31,7 @@
 - Python **3.10+**（Windows 上推荐官方安装包，macOS 上 `brew install python@3.11`）；
 - 可选：`c2patool`（用于读取 / 验证 C2PA）。如果没有装，工具仍可运行，C2PA 字段会标记 `c2pa_tool_available=false`；
 - 可选：`tesseract`（用于读取图片上的可见水印）。未安装时 OCR 段会显示明确的安装指引，不影响其他模块；
+- 可选：`reportlab`（**P2.4 PDF 报告导出**，`pip install reportlab`）。未安装时详情页「导出 PDF」按钮自动 `disabled` + tooltip 提示安装命令，永不抛 500；
 - 可选：环境变量 `FORENSICS_PHASH_REFERENCE_DIR`（用于 pHash 参考库反查；指向一个本地目录即可）。
 
 ### Windows
@@ -167,8 +169,49 @@ webapp 启动后会暴露以下 HTTP 接口（仅监听 127.0.0.1）：
 | GET | `/api/jobs/<job_id>/image/<slug>/report` | 取单图完整 report |
 | GET | `/jobs/<job_id>` | 任务页（HTML） |
 | GET | `/jobs/<job_id>/image/<slug>` | 单图详情页（HTML） |
+| GET | `/api/jobs/<job_id>/image/<slug>/report.pdf` | **P2.4** 司法级 PDF 报告（字节级可重现），响应头 `X-Pdf-Sha256` / `X-Source-Sha256` / `X-Pdf-Backend` / `X-Pdf-Viz-Count` |
+| GET | `/api/pdf/status` | **P2.4** PDF backend 探测，返回 `{available, version, error, package}` |
 
 `/api/scan_upload` 对路径做了严格清洗（拒绝 `..`、去掉盘符与起始斜杠、扩展名白名单），文件最终落到 `analysis_output/<job_id>/_uploaded/` 下，不会逃出该目录。
+
+---
+
+## 司法级 PDF 报告（P2.4）
+
+> 全部细节、最快验收路径、字节级可重现性自验脚本见 [docs/P2.4_ACCEPTANCE.md](file:///d:/workspace/project/find_image_hide/docs/P2.4_ACCEPTANCE.md)。
+
+### 功能
+
+- 单图详情页综合概览卡内嵌「**导出 PDF**」按钮，点一下浏览器自动下载 `forensic_report_<slug>.pdf`
+- PDF 含 4 节：综合概览（封面 + 风险等级红黄绿色条 + 文件 SHA-256）/ 15 模块分项表 / 证据条目 top-30 / 可重现性凭据页（SHA-256 + 数字签名占位）+ 6 张可视化图证（ELA / 频谱 / DCT / LSB / 残差 / Laplacian）
+- 中文走 reportlab 内置 CID 字体 STSong-Light，**零外部 TTF 文件**，三平台开箱即用
+
+### 字节级可重现承诺
+
+同一份 `report.json` 在任意机器、任意时刻重复渲染，PDF SHA-256 完全一致——这是司法证据链（chain-of-custody）的根本要求。律师 / 法官 / 对方专家都能拿同一份 `report.json` 自行重建得到字节级一致的 PDF，确认作证未被篡改。
+
+实现：[reportlab](file:///d:/workspace/project/find_image_hide/image_forensics/pdf_report.py) `SimpleDocTemplate(invariant=1)` 关闭随机 ObjectID + 时间戳从 `report["created_at"]` stamp + author/subject/creator/producer 全部写死。
+
+### HTTP 头 chain-of-custody
+
+每次下载响应都带这些头，外部脚本能直接消费：
+
+| 头 | 值 |
+|---|---|
+| `X-Pdf-Sha256` | 64 字符 hex，PDF 字节 hash |
+| `X-Source-Sha256` | 64 字符 hex，`report.json` 字节 hash |
+| `X-Pdf-Backend` | `reportlab/4.5.1` |
+| `X-Pdf-Viz-Count` | 实际嵌入的图证数（0-6） |
+| `X-Image-Sha256`（可选） | 仅在调用方传 image_path 时输出 |
+| `X-Source-Inputs-Sha256`（可选） | `sha256(report_sha:image_sha)` 复合 hash，与上同条件 |
+
+### 软依赖友好降级
+
+未装 reportlab 时 `/api/pdf/status` 返回 `{available: false, error: "..."}`，前端 [bindPdfExport](file:///d:/workspace/project/find_image_hide/webui/static/image.js#L818-L860) 自动把按钮 `disabled` 并在 tooltip 提示 `pip install reportlab`，**永不抛 500**。
+
+### 验收
+
+最快路径：装 reportlab → `python webapp.py` → 浏览器跑 demo → 进任意图详情 → 点导出 PDF。完整 8 块验收清单（含字节级可重现性自验脚本）见 [docs/P2.4_ACCEPTANCE.md](file:///d:/workspace/project/find_image_hide/docs/P2.4_ACCEPTANCE.md)。
 
 ---
 
@@ -255,6 +298,7 @@ find_image_hide/
     scoring.py
     analyzer.py
     batch.py
+    pdf_report.py             # P2.4 司法级可重现 PDF 报告（reportlab soft-dep）
     utils.py
   tools/
     download_test_images.py   # 真实公开样本下载
