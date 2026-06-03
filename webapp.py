@@ -478,6 +478,10 @@ def api_image_report_pdf(job_id: str, slug: str):
     resp.headers["X-Pdf-Sha256"] = manifest["pdf_sha256"]
     resp.headers["X-Source-Sha256"] = manifest["source_report_sha256"]
     resp.headers["X-Pdf-Backend"] = f"reportlab/{manifest['backend_version']}"
+    resp.headers["X-Pdf-Viz-Count"] = str(manifest.get("viz_count", 0))
+    if manifest.get("image_path_sha256"):
+        resp.headers["X-Image-Sha256"] = manifest["image_path_sha256"]
+        resp.headers["X-Source-Inputs-Sha256"] = manifest["source_inputs_sha256"]
     return resp
 
 

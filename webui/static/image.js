@@ -816,7 +816,10 @@ async function bindPdfExport(report) {
     }
     if (statusEl) statusEl.textContent = `PDF 后端就绪：reportlab ${st.version || ""}`;
   } catch (e) {
+    btn.disabled = true;
+    btn.title = `PDF 状态探测失败：${e}`;
     if (statusEl) statusEl.textContent = `PDF 状态探测失败：${e}`;
+    return;
   }
 
   btn.addEventListener("click", async () => {
@@ -836,6 +839,7 @@ async function bindPdfExport(report) {
       const pdfSha = resp.headers.get("X-Pdf-Sha256") || "";
       const srcSha = resp.headers.get("X-Source-Sha256") || "";
       const backend = resp.headers.get("X-Pdf-Backend") || "";
+      const vizCount = resp.headers.get("X-Pdf-Viz-Count") || "0";
       const blob = await resp.blob();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
@@ -848,6 +852,7 @@ async function bindPdfExport(report) {
       if (statusEl) {
         statusEl.innerHTML =
           `<strong>导出成功</strong> · 后端 ${escapeHtml(backend)} · ` +
+          `含 <code>${escapeHtml(vizCount)}</code> 张图证 · ` +
           `PDF SHA-256 <code>${escapeHtml(pdfSha.slice(0, 16))}…</code> · ` +
           `Source SHA-256 <code>${escapeHtml(srcSha.slice(0, 16))}…</code>`;
       }

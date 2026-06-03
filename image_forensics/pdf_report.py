@@ -282,17 +282,19 @@ _PREFERRED_VIZ = (
 )
 
 
-def _build_visualization_pages(viz_dir: Path | None, styles: dict[str, Any]) -> list[Any]:
+def _build_visualization_pages(
+    viz_dir: Path | None, styles: dict[str, Any]
+) -> tuple[list[Any], int]:
     flow: list[Any] = []
     if viz_dir is None or not viz_dir.is_dir():
-        return flow
+        return flow, 0
     available = []
     for name in _PREFERRED_VIZ:
         p = viz_dir / name
         if p.is_file():
             available.append((name, p))
     if not available:
-        return flow
+        return flow, 0
     flow.append(PageBreak())
     flow.append(Paragraph("可视化图证 (Visualizations)", styles["h2"]))
     flow.append(
@@ -310,7 +312,7 @@ def _build_visualization_pages(viz_dir: Path | None, styles: dict[str, Any]) -> 
         except Exception as exc:
             flow.append(Paragraph(f"[图证渲染失败: {type(exc).__name__}: {exc}]", styles["body"]))
         flow.append(Spacer(1, 6))
-    return flow
+    return flow, len(available)
 
 
 def render_pdf(
@@ -331,19 +333,25 @@ def render_pdf(
     output_pdf = Path(output_pdf)
     viz_dir_p = Path(viz_dir) if viz_dir else None
 
-    raw = report_path.read_bytes()
-    source_sha = _sha256_bytes(raw)
-    report = json.loads(raw.decode("utf-8"))
+    source_sha = _sha256_file(report_path)
+    report = json.loads(report_path.read_text(encoding="utf-8"))
 
+    image_sha: str | None = None
     if image_path is not None:
         try:
             img_p = Path(image_path)
             if img_p.is_file():
-                report.setdefault("input", {}).setdefault(
-                    "sha256", _sha256_file(img_p)
-                )
+                image_sha = _sha256_file(img_p)
+                report.setdefault("input", {}).setdefault("sha256", image_sha)
         except Exception:
             pass
+
+    if image_sha is not None:
+        source_inputs_sha = hashlib.sha256(
+            (source_sha + ":" + image_sha).encode("ascii")
+        ).hexdigest()
+    else:
+        source_inputs_sha = source_sha
 
     output_pdf.parent.mkdir(parents=True, exist_ok=True)
 
@@ -446,19 +454,26 @@ def render_pdf(
     flow.append(Spacer(1, 10))
     flow.append(Paragraph("三、证据条目", styles["h2"]))
     flow.extend(_build_evidence_paragraphs(report, styles))
-    flow.extend(_build_visualization_pages(viz_dir_p, styles))
+    viz_flow, viz_count = _build_visualization_pages(viz_dir_p, styles)
+    flow.extend(viz_flow)
     flow.append(PageBreak())
     flow.append(Paragraph("四、可重现性凭据", styles["h2"]))
-    chain_table = Table(
+    chain_rows = [
+        ["report.json SHA-256", source_sha],
+    ]
+    if image_sha is not None:
+        chain_rows.append(["image SHA-256", image_sha])
+        chain_rows.append(["复合输入 SHA-256", source_inputs_sha])
+    chain_rows.extend(
         [
-            ["report.json SHA-256", source_sha],
+            ["图证嵌入数", f"{viz_count} / {len(_PREFERRED_VIZ)}"],
             ["生成器", f"image_forensics.pdf_report (reportlab {_REPORTLAB_VERSION})"],
             ["生成时间 (UTC)", invariant_dt.isoformat()],
             ["可重现性", "本 PDF 由 reportlab invariant=1 生成；同一份 report.json + viz_dir 渲染出的 PDF 字节级一致"],
             ["数字签名", "（占位：建议用 GnuPG / Adobe Sign 对最终 PDF 做外部签名）"],
-        ],
-        colWidths=[40 * mm, 130 * mm],
+        ]
     )
+    chain_table = Table(chain_rows, colWidths=[40 * mm, 130 * mm])
     chain_table.setStyle(
         TableStyle(
             [
@@ -484,6 +499,9 @@ def render_pdf(
         "pdf_sha256": _sha256_bytes(pdf_bytes),
         "pdf_size_bytes": len(pdf_bytes),
         "source_report_sha256": source_sha,
+        "image_path_sha256": image_sha,
+        "source_inputs_sha256": source_inputs_sha,
+        "viz_count": viz_count,
         "generated_at": invariant_dt.isoformat(),
         "backend": "reportlab",
         "backend_version": _REPORTLAB_VERSION,
