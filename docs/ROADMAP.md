@@ -92,7 +92,7 @@
 
 **P1.1** ⭐⭐⭐ ✅ **2026-06-02 完成** — 在 [lsb_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/lsb_analysis.py) 扩展 8 位面 × 3 通道全扫描 + cross-channel diff + plane-progression 单调性检验。新增字段 `lsb_plane_stats / lsb_white_noise_planes / lsb_common_white_noise_planes / lsb_hierarchy_violation_score / lsb_plane0_cross_channel_spread`，向后兼容 legacy plane-0 字段。
 
-**P1.2** 新增 [steganalysis_external.py](file:///d:/workspace/project/find_image_hide/image_forensics/steganalysis_external.py)：subprocess 集成 stegoveritas / binwalk / stegseek，软依赖、有则用、无则跳
+**P1.2** ⭐⭐ ✅ **2026-06-03 完成** — 新建 [steganalysis_external.py](file:///d:/workspace/project/find_image_hide/image_forensics/steganalysis_external.py)：subprocess 软依赖集成 **binwalk / zsteg / stegoveritas / stegseek** 四件套。`shutil.which()` 找不到工具就返回 `tool_status=SKIPPED_NO_TOOL` + `risk=UNKNOWN`，永不抛；`argv` 列表 + `shell=False` + 30s timeout + tempfile 隔离 cwd 防注入。**stegseek opt-in**：必须 `FORENSICS_ENABLE_STEGSEEK=1` + `FORENSICS_STEGSEEK_WORDLIST` 才跑，否则 `SKIPPED_NOT_ENABLED`，避免字典爆破阻塞流水线。**风险升级**：binwalk 命中可执行/归档（Zip/PE/ELF/Mach-O 等）→ HIGH 进 `direct_high`；zsteg magic-number → HIGH；stegoveritas carved 文件 → MEDIUM；stegseek 破解密码 → HIGH。analyzer 串联，scoring 加 0.04 弱权重（HIGH 直接走 direct_high，权重只是平局打破器），summary 中文文案 + module_scores 字段。
 
 **P1.3** ⭐⭐⭐ ✅ **2026-06-02 完成** — 新建 [copy_move_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/copy_move_analysis.py)：经典 Fridrich-Goljan-Du 2003（8×8 块 DCT-II + zig-zag 前 16 系数 + lexicographic sort + shift-vector histogram + SNR 评分），纯 NumPy einsum 一次性计算所有块 DCT。analyzer 已串联，scoring 加权 0.06，可直接进入 direct_high。新增**块多样性门控**（diversity<0.30 或 ac_energy<0.5 时跳过），消除合成图 / 平滑梯度上的假阳性。
 
@@ -144,6 +144,23 @@
 - **P1.6 反搜按钮**：拒绝接入"代理上传"路径（隐私 + 法律风险），坚持纯客户端 `window.open`：默认上传式按钮始终可用，公网 URL 可选注入 `?image_url=...`。5 家覆盖国内外 + Google Lens 走 `lens.google.com/uploadbyurl`（不是已废弃的 `searchbyimage`）
 - **回归证据**：3 路 subagent 并行 + webapp HTTP E2E（multipart 上传 6 张 → 异步 job → summary）全过：14/14 + 6/6 + 6/6 + E2E 6/6（risk_counts={'HIGH':4,'MEDIUM':1,'UNKNOWN':1}），所有样本 `c2pa_check.status=SKIPPED_NO_LIBRARY`，所有 image.html 含 `reverse-search-card`
 - **scoring 权重微调**：新增 c2pa_check=0.04（与 provenance 互补，避免双计；权重小但 `VERIFIED_AI_GENERATED` 走 direct_high 升 HIGH 不依赖权重）
+
+### 2026-06-03（P1.2 外部隐写工具软依赖集成）
+
+- **软依赖范式复用**：完全沿用 P1.5 c2pa_check 同构 — `shutil.which()` 找不到 → `tool_status=SKIPPED_NO_TOOL` + `risk=UNKNOWN`，永不抛；本机干净环境下 4/4 工具全 SKIPPED 也不会污染 overall（normal_png 仍 UNKNOWN，14 张基线全部对齐）
+- **subprocess 安全调用**：`argv` 列表 + `shell=False` + `timeout=30s` + `tempfile.TemporaryDirectory` 隔离 cwd（防止 stegoveritas 在用户工作目录乱写文件、防止任何工具命令注入）
+- **stegseek 显式 opt-in**：必须 `FORENSICS_ENABLE_STEGSEEK=1`（精确匹配字符串 `"1"`，不接受其他 truthy 值）+ `FORENSICS_STEGSEEK_WORDLIST` 指向词典文件才跑；否则 `SKIPPED_NOT_ENABLED`。理由：rockyou 字典爆破单图通常 1-5 分钟，不能阻塞流水线
+- **风险升级表**：
+  - binwalk 输出含 EXECUTABLE_BINWALK_KEYWORDS（Zip / RAR / PE32 / ELF / Mach-O / gzip / 7-zip / Microsoft executable / 嵌入图片等）→ HIGH 进 `direct_high`
+  - binwalk ≥3 个非可执行签名（多重嵌入暗示）→ MEDIUM
+  - zsteg 输出 `magic` / `text:` 行 → HIGH
+  - zsteg ≥2 个 LSB 平面读出 ≥6 字符可打印 → MEDIUM
+  - stegoveritas 在 Results 目录 carved ≥1 文件 → MEDIUM
+  - stegseek 破解出 steghide 密码 → HIGH
+- **scoring 权重 0.04**：与 c2pa_check 同档；HIGH 通过 `direct_high` 直升，权重只在 MEDIUM 阶段做平局打破。**`external.risk_level=="HIGH"` 已加入 `direct_high` 表达式**
+- **不存输出冗余**：每个 tool 的 stdout/stderr 只取头 2KB 入 `evidence_items` 防止报告爆炸；不持久化 stegoveritas 的 carved 文件（用完即删的 tempdir）
+- **回归证据**：4 路并行 — run_regression 14/14 一致 + mini AI 6/6 一致（midjourney_oldtimer / sdxl_poisoned 仍 MEDIUM）+ webapp HTTP E2E 6/6（每张 image.html 仍含 `reverse-search-card`）+ 模块单测 4/4（含 monkey-patch 模拟 binwalk 命中 Zip → 验证 risk=HIGH 升级路径）。零新 Python 依赖、零新 ERROR
+- **跨平台**：`_which()` 在 Windows 下尝试 `<name>` / `<name>.exe` / `<name>.bat` / `<name>.cmd` 四种后缀；Linux/macOS 直接 `shutil.which`
 
 ---
 

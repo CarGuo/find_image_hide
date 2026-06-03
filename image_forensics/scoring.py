@@ -32,6 +32,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     copy_move = report.get("copy_move", {})
     ai_heur = report.get("ai_heuristics", {})
     c2pa = report.get("c2pa_check", {})
+    external = report.get("external_steganalysis", {})
 
     # Weights: industry-standard steganalysis (chi-square / SPA) and direct
     # extraction findings dominate, since they are *evidence* rather than
@@ -45,6 +46,11 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     #                            promoted via direct_high below regardless of
     #                            weight, so keeping the weight tiny avoids
     #                            double-counting with `provenance`.
+    #   - external_steganalysis: 0.04 -- soft-dep wrapper around binwalk /
+    #                            zsteg / stegoveritas / stegseek. When the
+    #                            tools ARE installed and DO confirm an embed,
+    #                            risk=HIGH goes through direct_high directly,
+    #                            so the score itself is just a tie-breaker.
     weights = {
         "extraction": 0.26,
         "steganalysis": 0.16,
@@ -61,6 +67,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         "copy_move": 0.06,
         "ai_heuristics": 0.04,
         "c2pa_check": 0.04,
+        "external_steganalysis": 0.04,
     }
 
     meta_score = 0.0
@@ -96,6 +103,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         + weights["copy_move"] * float(copy_move.get("copy_move_score", 0.0))
         + weights["ai_heuristics"] * float(ai_heur.get("ai_heuristics_score", 0.0))
         + weights["c2pa_check"] * float(c2pa.get("c2pa_score", 0.0))
+        + weights["external_steganalysis"] * float(external.get("external_steganalysis_score", 0.0))
     )
     confidence = float(min(1.0, max(0.0, raw)))
 
@@ -114,6 +122,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         copy_move.get("risk_level", "LOW"),
         ai_heur.get("risk_level", "LOW"),
         c2pa.get("risk_level", "LOW"),
+        external.get("risk_level", "LOW"),
     ]
     high_count = sum(1 for l in levels if l == "HIGH")
     med_count = sum(1 for l in levels if l == "MEDIUM")
@@ -155,6 +164,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         or inv_wm.get("risk_level") == "HIGH"
         or phash.get("risk_level") == "HIGH"
         or copy_move.get("risk_level") == "HIGH"
+        or external.get("risk_level") == "HIGH"
         or forged_copyright_signal
     )
     if direct_high:
@@ -310,6 +320,13 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         summary_parts.append(
             "C2PA manifest 存在但签名校验失败 —— 凭证可能被篡改或证书已不可信。"
         )
+    if external.get("risk_level") in ("MEDIUM", "HIGH"):
+        ext_tools_ok = [t for t in (external.get("tools") or []) if t.get("tool_status") == "OK"]
+        ext_lvl_cn = {"MEDIUM": "中风险", "HIGH": "高风险"}[external.get("risk_level")]
+        names = "、".join(t.get("tool", "?") for t in ext_tools_ok)
+        summary_parts.append(
+            f"外部隐写工具（{names}）检出嵌入证据（{ext_lvl_cn}）；详情见 external_steganalysis.tools。"
+        )
     if not summary_parts:
         summary_parts.append(
             "未发现明显的水印 / 隐写 / AI 痕迹，但请注意：检测不到不等于一定不存在。"
@@ -338,6 +355,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
             "copy_move": float(copy_move.get("copy_move_score", 0.0)),
             "ai_heuristics": float(ai_heur.get("ai_heuristics_score", 0.0)),
             "c2pa_check": float(c2pa.get("c2pa_score", 0.0)),
+            "external_steganalysis": float(external.get("external_steganalysis_score", 0.0)),
         },
         "limitations": [
             "本工具不能证明一张图绝对没有水印 / 隐写。",

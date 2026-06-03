@@ -25,6 +25,7 @@ from .noise_analysis import analyze_noise
 from .phash_match import analyze_phash_match
 from .scoring import aggregate
 from .steganalysis import analyze_steganalysis
+from .steganalysis_external import analyze_external
 from .visible_watermark_ocr import analyze_visible_watermark
 
 
@@ -144,6 +145,18 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         }
         errors.append(f"c2pa_check: {exc}")
 
+    try:
+        external = analyze_external(input_path)
+    except Exception as exc:
+        external = {
+            "risk_level": "UNKNOWN",
+            "external_steganalysis_score": 0.0,
+            "tools": [],
+            "evidence_items": [],
+            "error": str(exc),
+        }
+        errors.append(f"external_steganalysis: {exc}")
+
     report: dict[str, Any] = {
         "schema_version": "0.3.0",
         "tool_name": "Image Forensics Inspector",
@@ -165,6 +178,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         "copy_move": copy_move,
         "ai_heuristics": ai_heur,
         "c2pa_check": c2pa,
+        "external_steganalysis": external,
         "errors": errors,
     }
     overall = aggregate(report)
@@ -179,6 +193,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         ("phash_match", phash),
         ("copy_move", copy_move), ("ai_heuristics", ai_heur),
         ("c2pa_check", c2pa),
+        ("external_steganalysis", external),
     ):
         for item in module.get("evidence_items", []) or []:
             all_evidence.append({**item, "module": item.get("module", module_name)})
