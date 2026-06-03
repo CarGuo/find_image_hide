@@ -98,9 +98,9 @@
 
 **P1.4** ⭐⭐ ✅ **2026-06-02 完成** — 新建 [ai_heuristics.py](file:///d:/workspace/project/find_image_hide/image_forensics/ai_heuristics.py)：CVPR'25 *Secret Lies in Color* 启发的三特征加权（通道相关 45% + 高频残差平整度 35% + 36-bin 色相直方图峰值 30%）。**永远只升到 MEDIUM，不进 direct_high**。新增 `downscale_ratio` 信号失效保护：原图被强缩放（>1.5×）时屏蔽 HF 信号、（>2×）时屏蔽色相信号，避免 LANCZOS 摧毁高频后误判。
 
-**P1.5** 新增 [c2pa_check.py](file:///d:/workspace/project/find_image_hide/image_forensics/c2pa_check.py)：用 `c2pa-python` 读 manifest，UI 显示"内容凭证：✓ Adobe Photoshop / ⚠ 未签 / ✗ 失效"
+**P1.5** ⭐⭐ ✅ **2026-06-02 完成** — 新建 [c2pa_check.py](file:///d:/workspace/project/find_image_hide/image_forensics/c2pa_check.py)：软依赖 `c2pa-python`（pip 包），未安装返回 `SKIPPED_NO_LIBRARY` 不报错。模块输出 `status / risk_level / c2pa_score / claim_generator / signature_info / signature_valid / ai_software_agents / assertions[]`。analyzer 串联，scoring 加 0.04 弱权重避免与既有 `provenance` 加权双计；`status=VERIFIED_AI_GENERATED` 进入 `direct_high`。与既有 `ai_provenance_analysis.py`（走 c2patool CLI）形成"CLI + Python SDK"双路径互补。
 
-**P1.6** UI 增加反向图像搜索按钮：上传图 → 一键打开 Google Images / TinEye / Yandex / Bing 多 tab
+**P1.6** ⭐ ✅ **2026-06-02 完成** — 在 [image.html](file:///d:/workspace/project/find_image_hide/webui/templates/image.html) overview-card 之后追加 `reverse-search-card`：5 家引擎（Google Images / TinEye / Yandex / Bing / 百度识图）一行按钮。**纯客户端实现，零后端 API**：默认打开各站的"上传搜索"页面（`https://images.google.com/` 等）让用户手动拖图；若用户在文本框粘贴公网 URL，则按钮自动切换为"链接式" `?image_url=...` 直跳。privacy-first，不替用户上传图。
 
 ### 🎯 P2 — 长尾 / 加分项
 
@@ -132,6 +132,18 @@
 - **Copy-Move 自相似护栏**：块多样性<30% 或 AC 能量<0.5 时整图跳过（已修复 normal_png.png 平滑梯度假阳性）
 - **回归覆盖**：[regression_clean_baseline.py](file:///d:/workspace/project/find_image_hide/tools/regression_clean_baseline.py) 4/4 通过；[run_regression.py](file:///d:/workspace/project/find_image_hide/tools/run_regression.py) 14/14 通过；mini AI 数据集 12 张 0 假阳性、1 命中 MEDIUM
 - **scoring 权重调整**：extraction 0.28→0.26、steganalysis 0.18→0.16、visible_wm/invisible_wm/phash 0.10→0.08；新增 copy_move=0.06、ai_heuristics=0.04（合计仍 1.0）
+
+### 2026-06-02（P1 收官 · fix-medium + C2PA SDK + 反搜按钮）
+
+- **scoring 单 MEDIUM 升级补丁**（[scoring.py](file:///d:/workspace/project/find_image_hide/image_forensics/scoring.py)）：在三 subagent 回归中暴露的真实空洞——单 MEDIUM 模块独立命中时 overall 输出 UNKNOWN。新增三档分支：
+  - `copy_move=MEDIUM` 独立直升 MEDIUM（Copy-Move 是结构性证据而非启发式，SNR≥8/top≥6 已是显著事件）
+  - 无损容器下 `lsb=MEDIUM` 独立直升 MEDIUM（lossless+lsb 才能被 DCT/PNG 容器保留）
+  - 单 MEDIUM 命中时若 `ai_heur` 自身阈≥0.55 也直升；否则要求 confidence>0.35 才升，避免噪声升级
+  中招样本：mini-AI 集中 `midjourney_oldtimer.png`（ai_heur=MEDIUM）、`sdxl_poisoned_examples.png`（cm=MEDIUM）现在都正确给 MEDIUM
+- **P1.5 c2pa-python SDK 路径**：与既有 `ai_provenance_analysis.py`（c2patool CLI 二进制）形成"双路径"：CLI 装了走 CLI，pip 装了 c2pa-python 走 SDK，都没装就 `SKIPPED_NO_LIBRARY`，永不报错。SDK 路径可独立解析 manifest 的 `validation_status` / `assertions[].softwareAgent`，输出比 CLI 更结构化的 `ai_software_agents`
+- **P1.6 反搜按钮**：拒绝接入"代理上传"路径（隐私 + 法律风险），坚持纯客户端 `window.open`：默认上传式按钮始终可用，公网 URL 可选注入 `?image_url=...`。5 家覆盖国内外 + Google Lens 走 `lens.google.com/uploadbyurl`（不是已废弃的 `searchbyimage`）
+- **回归证据**：3 路 subagent 并行 + webapp HTTP E2E（multipart 上传 6 张 → 异步 job → summary）全过：14/14 + 6/6 + 6/6 + E2E 6/6（risk_counts={'HIGH':4,'MEDIUM':1,'UNKNOWN':1}），所有样本 `c2pa_check.status=SKIPPED_NO_LIBRARY`，所有 image.html 含 `reverse-search-card`
+- **scoring 权重微调**：新增 c2pa_check=0.04（与 provenance 互补，避免双计；权重小但 `VERIFIED_AI_GENERATED` 走 direct_high 升 HIGH 不依赖权重）
 
 ---
 

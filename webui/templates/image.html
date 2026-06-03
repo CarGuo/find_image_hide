@@ -22,6 +22,26 @@
       </div>
     </section>
 
+    <section class="card" id="reverse-search-card">
+      <h2>反向图像搜索 <span class="muted">（P1.6）</span></h2>
+      <p class="explain">
+        用于"这张图哪里来的、有没有更早的版本、是否被洗稿"。
+        <strong>本地预览图无法直达 Google/TinEye/Bing</strong>（这些站需要公网 URL），
+        所以这里给两套入口：
+        <em>① 上传式</em> — 直接打开各站的"上传搜索"页面，再手动把这张图拖进去；
+        <em>② 链接式</em> — 如果你已经把这张图发布到公网（任何 https URL），
+        粘贴到下面文本框，按钮会自动构造带 image_url 参数的搜索 URL。
+      </p>
+      <div class="rsearch-row">
+        <input id="rsearch-url" type="text" placeholder="https://example.com/your-image.jpg（可选）"
+               style="flex:1;padding:6px 10px;border:1px solid #ccc;border-radius:4px;" />
+      </div>
+      <div class="rsearch-row" id="rsearch-btn-row" style="margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;">
+        <!-- buttons injected by image.js -->
+      </div>
+    </section>
+
+
     <nav class="tabs">
       <button data-tab="extraction" class="active">隐藏内容提取</button>
       <button data-tab="copyright">版权 / 图库</button>

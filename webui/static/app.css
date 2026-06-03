@@ -110,6 +110,21 @@ table.results tbody tr:hover { background: #f7f9fc; }
 .notice ul, .notice ol { margin: 6px 0 0 18px; padding: 0; }
 .notice li { margin: 2px 0; }
 
+.btn.rsearch-btn {
+  display: inline-block;
+  padding: 6px 14px;
+  background: #3457d5;
+  color: #fff !important;
+  border: none;
+  border-radius: 4px;
+  text-decoration: none;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn.rsearch-btn:hover { background: #2541aa; }
+.rsearch-row { display: flex; align-items: center; gap: 8px; margin-top: 8px; }
+
 .vis-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 12px; }
 .vis-grid figure { margin: 0; }
 .vis-grid figure img { width: 100%; border: 1px solid #e0e3e8; border-radius: 4px; background: #000; }

@@ -12,6 +12,7 @@ from typing import Any
 from .ai_provenance_analysis import analyze_ai_provenance
 from .ai_heuristics import analyze_ai_heuristics
 from .basic_info import collect_basic_info
+from .c2pa_check import analyze_c2pa
 from .copy_move_analysis import analyze_copy_move
 from .dct_analysis import analyze_dct
 from .ela import analyze_ela
@@ -130,6 +131,19 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         ai_heur = {"risk_level": "UNKNOWN", "ai_heuristics_score": 0.0, "error": str(exc), "evidence_items": []}
         errors.append(f"ai_heuristics: {exc}")
 
+    try:
+        c2pa = analyze_c2pa(input_path)
+    except Exception as exc:
+        c2pa = {
+            "status": "ERROR",
+            "risk_level": "UNKNOWN",
+            "c2pa_score": 0.0,
+            "library": "c2pa-python",
+            "evidence_items": [],
+            "error": str(exc),
+        }
+        errors.append(f"c2pa_check: {exc}")
+
     report: dict[str, Any] = {
         "schema_version": "0.3.0",
         "tool_name": "Image Forensics Inspector",
@@ -150,6 +164,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         "phash_match": phash,
         "copy_move": copy_move,
         "ai_heuristics": ai_heur,
+        "c2pa_check": c2pa,
         "errors": errors,
     }
     overall = aggregate(report)
@@ -163,6 +178,7 @@ def analyze_image(input_path: str | Path, output_dir: str | Path) -> dict[str, A
         ("visible_watermark", visible_wm), ("invisible_watermark", invisible_wm),
         ("phash_match", phash),
         ("copy_move", copy_move), ("ai_heuristics", ai_heur),
+        ("c2pa_check", c2pa),
     ):
         for item in module.get("evidence_items", []) or []:
             all_evidence.append({**item, "module": item.get("module", module_name)})

@@ -31,6 +31,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     phash = report.get("phash_match", {})
     copy_move = report.get("copy_move", {})
     ai_heur = report.get("ai_heuristics", {})
+    c2pa = report.get("c2pa_check", {})
 
     # Weights: industry-standard steganalysis (chi-square / SPA) and direct
     # extraction findings dominate, since they are *evidence* rather than
@@ -38,6 +39,12 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
     # P1 additions:
     #   - copy_move    : 0.06 -- structural evidence, but LOW base rate
     #   - ai_heuristics: 0.04 -- weak channel-stat hint, never solo HIGH
+    #   - c2pa_check   : 0.04 -- complementary to provenance via c2pa-python;
+    #                            most images won't have a manifest, so low base
+    #                            rate; when manifest IS verified it gets
+    #                            promoted via direct_high below regardless of
+    #                            weight, so keeping the weight tiny avoids
+    #                            double-counting with `provenance`.
     weights = {
         "extraction": 0.26,
         "steganalysis": 0.16,
@@ -53,6 +60,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         "phash_match": 0.08,
         "copy_move": 0.06,
         "ai_heuristics": 0.04,
+        "c2pa_check": 0.04,
     }
 
     meta_score = 0.0
@@ -87,6 +95,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         + weights["phash_match"] * float(phash.get("phash_score", 0.0))
         + weights["copy_move"] * float(copy_move.get("copy_move_score", 0.0))
         + weights["ai_heuristics"] * float(ai_heur.get("ai_heuristics_score", 0.0))
+        + weights["c2pa_check"] * float(c2pa.get("c2pa_score", 0.0))
     )
     confidence = float(min(1.0, max(0.0, raw)))
 
@@ -104,6 +113,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         phash.get("risk_level", "LOW"),
         copy_move.get("risk_level", "LOW"),
         ai_heur.get("risk_level", "LOW"),
+        c2pa.get("risk_level", "LOW"),
     ]
     high_count = sum(1 for l in levels if l == "HIGH")
     med_count = sum(1 for l in levels if l == "MEDIUM")
@@ -135,6 +145,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
 
     direct_high = (
         prov.get("status") in ("VERIFIED_AI_GENERATED", "VERIFIED_AI_EDITED")
+        or c2pa.get("status") == "VERIFIED_AI_GENERATED"
         or ext.get("risk_level") == "HIGH"
         or steg.get("risk_level") == "HIGH"
         or full_lsb_replacement
@@ -150,10 +161,30 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
         overall = "HIGH"
     elif ext.get("risk_level") == "MEDIUM" or steg.get("risk_level") == "MEDIUM":
         overall = "MEDIUM"
+    elif copy_move.get("risk_level") == "MEDIUM":
+        # Copy-Move at MEDIUM is *structural evidence* (block-DCT shift histogram
+        # passed the SNR>=8/top>=6 gate but didn't reach SNR>=20). It is far
+        # stronger than a passive heuristic and deserves a MEDIUM overall on
+        # its own, even when no other module fires.
+        overall = "MEDIUM"
+    elif (not is_lossy) and lsb.get("risk_level") == "MEDIUM":
+        # LSB MEDIUM on a lossless container is a real anomaly, not noise.
+        overall = "MEDIUM"
     elif med_count >= 2 or confidence > 0.5:
         overall = "MEDIUM"
     elif med_count >= 1:
-        overall = "MEDIUM" if confidence > 0.35 else "UNKNOWN"
+        # Single weak signal: upgrade if ai_heur produced score >= 0.55 (the
+        # module's own MEDIUM threshold) or any other module sits above 0.35.
+        # This closes the "single-MEDIUM -> UNKNOWN" gap exposed by the
+        # 2026-06-02 mini-AI regression while keeping clean negatives at LOW.
+        ai_heur_med = ai_heur.get("risk_level") == "MEDIUM"
+        ai_heur_score = float(ai_heur.get("ai_heuristics_score", 0.0))
+        if ai_heur_med and ai_heur_score >= 0.55:
+            overall = "MEDIUM"
+        elif confidence > 0.35:
+            overall = "MEDIUM"
+        else:
+            overall = "UNKNOWN"
     else:
         overall = "LOW"
 
@@ -264,6 +295,21 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
             f"颜色 / 高频启发式提示该图可能由扩散模型生成（启发式分 {score:.2f}）；"
             "请结合 C2PA / 元数据综合判断，单独不足以认定。"
         )
+    c2pa_status = c2pa.get("status", "")
+    if c2pa_status == "VERIFIED_AI_GENERATED":
+        cg = c2pa.get("claim_generator") or "未知生成器"
+        summary_parts.append(
+            f"c2pa-python 验证：manifest 签名有效，claim_generator = {cg}，确认 AI 生成。"
+        )
+    elif c2pa_status == "AI_MANIFEST_UNVERIFIED":
+        agents = "、".join(c2pa.get("ai_software_agents") or []) or (c2pa.get("claim_generator") or "AI 工具")
+        summary_parts.append(
+            f"C2PA manifest 中声明了 AI 生成器（{agents}），但当前环境未能验证签名。"
+        )
+    elif c2pa_status == "SIGNATURE_INVALID":
+        summary_parts.append(
+            "C2PA manifest 存在但签名校验失败 —— 凭证可能被篡改或证书已不可信。"
+        )
     if not summary_parts:
         summary_parts.append(
             "未发现明显的水印 / 隐写 / AI 痕迹，但请注意：检测不到不等于一定不存在。"
@@ -291,6 +337,7 @@ def aggregate(report: dict[str, Any]) -> dict[str, Any]:
             "phash_match": float(phash.get("phash_score", 0.0)),
             "copy_move": float(copy_move.get("copy_move_score", 0.0)),
             "ai_heuristics": float(ai_heur.get("ai_heuristics_score", 0.0)),
+            "c2pa_check": float(c2pa.get("c2pa_score", 0.0)),
         },
         "limitations": [
             "本工具不能证明一张图绝对没有水印 / 隐写。",

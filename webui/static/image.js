@@ -78,6 +78,68 @@ function renderOverview(report) {
   `;
 }
 
+// ---------- P1.6 reverse image search ----------
+//
+// Reverse image search engines all accept either a public image URL via a
+// query string parameter, OR an interactive upload page. We construct both:
+//   1) "上传式" buttons: open the engine's upload UI in a new tab. The user
+//      drops the local image manually. This always works.
+//   2) "链接式" buttons: only enabled when the user pastes a public URL into
+//      the textbox. We URL-encode it into the engine's image_url parameter.
+//
+// We intentionally do NOT proxy the image through a third party or upload it
+// for the user -- privacy first, and we can't impersonate the user's session.
+const REVERSE_ENGINES = [
+  {
+    key: "google",
+    label: "Google Images",
+    upload_url: "https://images.google.com/",
+    by_url: (u) => `https://lens.google.com/uploadbyurl?url=${encodeURIComponent(u)}`,
+  },
+  {
+    key: "tineye",
+    label: "TinEye",
+    upload_url: "https://tineye.com/",
+    by_url: (u) => `https://tineye.com/search/?url=${encodeURIComponent(u)}`,
+  },
+  {
+    key: "yandex",
+    label: "Yandex",
+    upload_url: "https://yandex.com/images/",
+    by_url: (u) => `https://yandex.com/images/search?rpt=imageview&url=${encodeURIComponent(u)}`,
+  },
+  {
+    key: "bing",
+    label: "Bing",
+    upload_url: "https://www.bing.com/visualsearch",
+    by_url: (u) => `https://www.bing.com/images/search?view=detailv2&iss=sbi&q=imgurl:${encodeURIComponent(u)}`,
+  },
+  {
+    key: "baidu",
+    label: "百度识图",
+    upload_url: "https://graph.baidu.com/",
+    by_url: (u) => `https://graph.baidu.com/details?isfromtusoupc=1&tn=pc&carousel=0&image=${encodeURIComponent(u)}`,
+  },
+];
+
+function renderReverseSearch(report) {
+  const row = document.querySelector("#rsearch-btn-row");
+  const input = document.querySelector("#rsearch-url");
+  if (!row || !input) return;
+
+  function rebuild() {
+    const u = input.value.trim();
+    const hasUrl = /^https?:\/\//i.test(u);
+    row.innerHTML = REVERSE_ENGINES.map((eng) => {
+      const target = hasUrl ? eng.by_url(u) : eng.upload_url;
+      const tag = hasUrl ? "🔗 链接" : "📤 上传";
+      return `<a class="btn rsearch-btn" target="_blank" rel="noopener noreferrer" href="${target}">${tag} ${escapeHtml(eng.label)}</a>`;
+    }).join("");
+  }
+  rebuild();
+  input.addEventListener("input", rebuild);
+}
+
 function renderExtraction(report) {
   const e = report.extraction || {};
   const t = e.trailing_data || {};
@@ -716,6 +778,7 @@ $$(".tabs button").forEach(btn => {
   }
   const report = await resp.json();
   renderOverview(report);
+  renderReverseSearch(report);
   renderExtraction(report);
   renderCopyright(report);
   renderSteg(report);
