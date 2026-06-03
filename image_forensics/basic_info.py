@@ -7,6 +7,7 @@ from typing import Any
 import imagehash
 from PIL import Image
 
+from .format_decoder import open_any
 from .utils import guess_mime, sha256_of_file
 
 
@@ -28,7 +29,7 @@ def collect_basic_info(path: Path) -> dict[str, Any]:
         "perceptual_hash": None,
     }
     try:
-        with Image.open(path) as img:
+        with open_any(path) as img:
             img.load()
             info["format"] = img.format
             info["width"], info["height"] = img.size

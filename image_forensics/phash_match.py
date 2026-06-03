@@ -22,6 +22,8 @@ from typing import Any
 
 from PIL import Image
 
+from .format_decoder import open_any
+
 DEFAULT_THRESHOLD = 8        # Hamming distance for "very likely the same image"
 SUSPICIOUS_THRESHOLD = 16    # 8..16 = "looks similar"
 
@@ -72,7 +74,7 @@ def _build_index(reference_dir: Path) -> dict[str, str]:
             index[prior["phash"]] = rel
             continue
         try:
-            with Image.open(p) as img:
+            with open_any(p) as img:
                 img.load()
                 ph = str(imagehash.phash(img.convert("RGB")))
             cache_data[rel] = {"phash": ph, "mtime": mtime}
@@ -143,7 +145,7 @@ def analyze_phash_match(path: Path, reference_dir: Path | None) -> dict[str, Any
         }
 
     try:
-        with Image.open(path) as img:
+        with open_any(path) as img:
             img.load()
             cand_ph = str(imagehash.phash(img.convert("RGB")))
     except Exception as exc:

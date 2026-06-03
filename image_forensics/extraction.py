@@ -25,6 +25,7 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .format_decoder import open_any
 from .utils import to_numpy_rgb, is_lossy_format
 
 
@@ -320,7 +321,7 @@ def analyze_extraction(path: Path) -> dict[str, Any]:
     trailing = _detect_trailing_data(path)
     mpf_info = trailing.get("mpf_container")
 
-    img = Image.open(path)
+    img = open_any(path)
     img.load()
     pil_format = (img.format or "").upper()
     if img.mode != "RGB":

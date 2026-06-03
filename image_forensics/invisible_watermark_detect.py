@@ -30,6 +30,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .format_decoder import open_any
+
 # 已知水印文本字典（社区常见 + Stability AI 官方）
 _KNOWN_INVISIBLE_WATERMARKS = {
     "sdv2": "Stable Diffusion v2.x 默认水印",
@@ -148,7 +150,7 @@ def analyze_invisible_watermark(path: Path) -> dict[str, Any]:
     WatermarkDecoder, cv2 = backend
 
     try:
-        with Image.open(path) as im:
+        with open_any(path) as im:
             im.load()
             rgb = im.convert("RGB")
             arr = np.array(rgb)

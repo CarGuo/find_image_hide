@@ -103,9 +103,10 @@ def analyze_ai_heuristics(path: Path) -> dict[str, Any]:
     # histogram -- both of which are exactly the signals we read. We MUST
     # discount them in that case, otherwise every large phone shot scores
     # high from sheer interpolation smoothing.
-    from PIL import Image as _Image
+    from PIL import Image as _Image  # noqa: F401 - kept for any future direct use
+    from .format_decoder import open_any as _open_any
     try:
-        with _Image.open(path) as _probe:
+        with _open_any(path) as _probe:
             orig_w, orig_h = _probe.size
     except Exception:
         orig_w, orig_h = 0, 0

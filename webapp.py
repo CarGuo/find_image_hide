@@ -20,7 +20,16 @@ DEFAULT_OUTPUT = APP_ROOT / "analysis_output"
 DEFAULT_OUTPUT.mkdir(parents=True, exist_ok=True)
 
 
-SUPPORTED_IMAGE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
+SUPPORTED_IMAGE_EXTS = {
+    ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd",
+    # P2.3: extra formats — actual decode availability depends on optional
+    # decoders (pillow-heif / Pillow>=11.3 native AVIF / rawpy). Listing the
+    # extension here lets uploads through; analyzer.collect_basic_info will
+    # surface a friendly "decoder missing" error if the user uploaded a
+    # format whose optional decoder isn't installed.
+    ".heic", ".heif", ".avif",
+    ".dng", ".nef", ".cr2", ".cr3", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw", ".kdc", ".dcr",
+}
 MAX_UPLOAD_BYTES = 1024 * 1024 * 1024
 
 

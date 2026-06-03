@@ -1,6 +1,10 @@
 const $ = (sel) => document.querySelector(sel);
 
-const SUPPORTED_EXTS = [".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"];
+const SUPPORTED_EXTS = [
+  ".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd",
+  ".heic", ".heif", ".avif",
+  ".dng", ".nef", ".cr2", ".cr3", ".arw", ".raf", ".orf", ".rw2", ".pef", ".srw", ".kdc", ".dcr"
+];
 
 function isSupported(name) {
   const lower = (name || "").toLowerCase();

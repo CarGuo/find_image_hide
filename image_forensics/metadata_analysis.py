@@ -7,6 +7,7 @@ from typing import Any
 
 from PIL import ExifTags, Image
 
+from .format_decoder import open_any
 from .psd_metadata import parse_psd_metadata
 
 try:
@@ -329,7 +330,7 @@ def collect_metadata(path: Path) -> dict[str, Any]:
         "metadata_ai_keywords": [],
     }
     try:
-        with Image.open(path) as img:
+        with open_any(path) as img:
             img.load()
             exif = _read_exif(img)
             if exif:

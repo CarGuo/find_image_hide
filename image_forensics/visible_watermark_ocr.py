@@ -24,6 +24,8 @@ from typing import Any
 
 from PIL import Image, ImageDraw, ImageOps
 
+from .format_decoder import open_any
+
 WATERMARK_KEYWORDS = [
     "getty", "gettyimages", "getty images",
     "istock", "istockphoto",
@@ -171,7 +173,7 @@ def analyze_visible_watermark(path: Path, vis_dir: Path) -> dict[str, Any]:
     backend_name, engine = backend
 
     try:
-        img = Image.open(path)
+        img = open_any(path)
         img.load()
         img = img.convert("RGB")
     except Exception as exc:

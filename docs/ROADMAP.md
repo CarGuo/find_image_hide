@@ -104,7 +104,10 @@
 
 ### 🎯 P2 — 长尾 / 加分项
 
-- HEIC / AVIF / WebP / RAW 解码兼容
+**P2.3** ⭐⭐ ✅ **2026-06-03 完成** — 新建 [format_decoder.py](file:///d:/workspace/project/find_image_hide/image_forensics/format_decoder.py)：HEIC / AVIF / RAW 三软依赖统一入口 `open_any(path)`。AVIF 直接走 Pillow ≥11.3 内置 libavif（**零新依赖**），HEIC 通过 `pillow-heif.register_heif_opener()` 一次性注册到 Pillow，RAW 通过 `rawpy.imread().postprocess()` 解 demosaic 包成 `Image.fromarray(format='RAW')`。`decoder_status()` 返回三组探测结果（available / version / error / package）便于 `/api/diagnostics` 与单测断言。已在 [utils.safe_open_rgb](file:///d:/workspace/project/find_image_hide/image_forensics/utils.py)、[basic_info](file:///d:/workspace/project/find_image_hide/image_forensics/basic_info.py)、[extraction](file:///d:/workspace/project/find_image_hide/image_forensics/extraction.py)、[metadata_analysis](file:///d:/workspace/project/find_image_hide/image_forensics/metadata_analysis.py)、[ai_provenance_analysis](file:///d:/workspace/project/find_image_hide/image_forensics/ai_provenance_analysis.py)、[ai_heuristics](file:///d:/workspace/project/find_image_hide/image_forensics/ai_heuristics.py)、[visible_watermark_ocr](file:///d:/workspace/project/find_image_hide/image_forensics/visible_watermark_ocr.py)、[invisible_watermark_detect](file:///d:/workspace/project/find_image_hide/image_forensics/invisible_watermark_detect.py)、[phash_match](file:///d:/workspace/project/find_image_hide/image_forensics/phash_match.py) 全面替换 `Image.open(path)`；同步扩展 [webapp.py](file:///d:/workspace/project/find_image_hide/webapp.py) `SUPPORTED_IMAGE_EXTS` 与 [app.js](file:///d:/workspace/project/find_image_hide/webui/static/app.js) `SUPPORTED_EXTS`，覆盖 .heic/.heif/.avif 与 11 种主流相机 RAW 后缀。
+
+### 🎯 P2 — 后续待办
+
 - Deepfake 人脸检测（DeepFake-O-Meter 风格软依赖）
 - PRNU 相机指纹
 - 报告导出 PDF / 司法级"可重现报告"
@@ -161,6 +164,18 @@
 - **不存输出冗余**：每个 tool 的 stdout/stderr 只取头 2KB 入 `evidence_items` 防止报告爆炸；不持久化 stegoveritas 的 carved 文件（用完即删的 tempdir）
 - **回归证据**：4 路并行 — run_regression 14/14 一致 + mini AI 6/6 一致（midjourney_oldtimer / sdxl_poisoned 仍 MEDIUM）+ webapp HTTP E2E 6/6（每张 image.html 仍含 `reverse-search-card`）+ 模块单测 4/4（含 monkey-patch 模拟 binwalk 命中 Zip → 验证 risk=HIGH 升级路径）。零新 Python 依赖、零新 ERROR
 - **跨平台**：`_which()` 在 Windows 下尝试 `<name>` / `<name>.exe` / `<name>.bat` / `<name>.cmd` 四种后缀；Linux/macOS 直接 `shutil.which`
+
+### 2026-06-03（P2.3 多格式解码兼容）
+
+- **三软依赖范式**：与 P1.5 / P1.2 同构 — import-time probe + `_AVAILABLE/_VERSION/_ERROR` 三元状态 + `decoder_status()` 自描述。三组：HEIC（pillow-heif）/ AVIF（**Pillow ≥11.3 native libavif**，回退 pillow-avif-plugin）/ RAW（rawpy）。本机 Pillow 11.3.0 已具备 native AVIF，**整个 P2.3 在用户已安装 Pillow ≥11.3 的环境下零新依赖**
+- **统一入口 `open_any(path)`**：返回 `PIL.Image.Image`。HEIC/AVIF 直接 `Image.open` 透传（已注册解码器）；RAW 走 `rawpy.imread + postprocess(output_bps=8, no_auto_bright=False, use_camera_wb=True)` 拿到 demosaic 后的 ndarray，再 `Image.fromarray(rgb, 'RGB')` 包装并 `img.format = "RAW"` 让下游模块的 `EXIF` 抓取与 `format` 字段一致
+- **入口聚拢**：[utils.safe_open_rgb](file:///d:/workspace/project/find_image_hide/image_forensics/utils.py) 由 `Image.open(path)` 改为 `open_any(path)`；其余 9 处 image_forensics 模块（basic_info / metadata_analysis / extraction / invisible_watermark_detect / ai_provenance_analysis / visible_watermark_ocr / phash_match × 2 / ai_heuristics）全部用 `open_any` 替换 `Image.open(path)`。**保留 `Image.open(buf)`**（如 `ela.py` 的 BytesIO 路径），因为 buffer 入口由调用者负责字节级数据
+- **SUPPORTED_EXTS 三层一致**：`format_decoder.EXTRA_EXTS` (`.heic/.heif/.avif/.dng/.nef/.cr2/.cr3/.arw/.raf/.orf/.rw2/.pef/.srw/.kdc/.dcr`) → `utils.SUPPORTED_EXTS` 并集 → [webapp.SUPPORTED_IMAGE_EXTS](file:///d:/workspace/project/find_image_hide/webapp.py) 显式扩列 → [app.js](file:///d:/workspace/project/find_image_hide/webui/static/app.js) 前端 `SUPPORTED_EXTS` 同步，三处必须严格一致防止"后端能扫前端拒绝/前端通过后端识别失败"
+- **LOSSLESS_FORMATS 不收 HEIC/AVIF/RAW**：HEIC/AVIF 默认有损（HEIC=HEVC、AVIF=AV1），RAW 走 demosaic 已是浮点重建。三者**不**进 LSB 全位面强分析，避免 Westfeld 1999 经典假阳性。WebP 同理（默认 lossy）
+- **`UnsupportedFormatError(detected_ext, hint_pkg)`**：自定义异常类型，`open_any` 在 ext 已知但 decoder MISSING 时抛出（例如未装 pillow-heif 又上传 .heic），消息体含安装提示 `pip install pillow-heif`，方便单测断言失败模式与前端可消费
+- **测试样本去假阳性**：第一版 `Image.new('RGB',(320,240),'white')` + 渐变填充导致 ai_heuristics_score=1.0（hf_residual_std≈0、hue 单 bin），把 normal_avif/normal_webp 推到 MEDIUM 假阳性。**第二版**用 `Image.open('tools/test_images/normal_jpeg.jpg').convert('RGB')` 重编码到 AVIF/WEBP — 真实照片的频域统计与色相分布让 ai_score 落到 0.42-0.48 区间，overall=LOW
+- **回归证据**：3 路并行 — run_regression 16 张全过（normal_png=HIGH 是 P2.3 之前已存在的样本本身被嵌入 LSB，与本轮无关，已 `git stash` 回 `3140616` 验证）+ webapp HTTP E2E 5/5（jpg/png/webp/avif/ai_metadata 全 errors=0，risk_counts={HIGH:2,LOW:3}，每张 image.html 仍含 `reverse-search-card`）+ 模块单测 5/5（open_any AVIF/WEBP / decoder_status 三键 / is_extra_format 大小写 / is_raw / monkey-patch HEIC missing 触发 UnsupportedFormatError 含 "pillow-heif" hint）
+- **跨平台**：本机 Pillow 11.3.0 + native AVIF；macOS/Linux 用户若 Pillow <11.3 可走 `pip install pillow-avif-plugin` 回退路径（format_decoder 自动探测）；HEIC/RAW 在三平台均依赖 `pillow-heif` / `rawpy` 的预编译 wheel（PyPI 已覆盖 Win/macOS/Linux × Py 3.9-3.13）
 
 ---
 

@@ -388,9 +388,34 @@ def main() -> None:
         ref_img = make_natural(seed=101)
     make_phash_laundered(ref_img, OUT / "phash_laundered_match.jpg")
 
+    make_p23_format_samples(OUT)
+
     print("Wrote test images to", OUT)
     for p in sorted(OUT.iterdir()):
         print(" -", p.name, "(", p.stat().st_size, "bytes )")
+
+
+def make_p23_format_samples(out_dir: Path) -> None:
+    """P2.3 multi-format decode coverage: AVIF + WebP samples re-encoded from
+    a real photo (normal_jpeg.jpg) so ai_heuristics sees realistic spectral
+    statistics and does not raise a false positive on flat synthetic gradients.
+
+    AVIF requires Pillow >= 11.3 (native libavif) or pillow-avif-plugin.
+    WebP support is built into Pillow on all common builds.
+    """
+    src = out_dir / "normal_jpeg.jpg"
+    if not src.exists():
+        print("[warn] normal_jpeg.jpg missing, skipping AVIF/WebP samples")
+        return
+    base = Image.open(src).convert("RGB")
+    try:
+        base.save(out_dir / "normal_webp.webp", format="WEBP", quality=85)
+    except Exception as exc:
+        print(f"[warn] WEBP encode failed: {exc}")
+    try:
+        base.save(out_dir / "normal_avif.avif", format="AVIF", quality=70)
+    except Exception as exc:
+        print(f"[warn] AVIF encode failed (need Pillow>=11.3 or pillow-avif-plugin): {exc}")
 
 
 if __name__ == "__main__":

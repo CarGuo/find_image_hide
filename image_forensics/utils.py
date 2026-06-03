@@ -9,12 +9,22 @@ from typing import Iterable
 import numpy as np
 from PIL import Image
 
-SUPPORTED_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
+from .format_decoder import EXTRA_EXTS, open_any
+
+# Base set of "always understood" extensions (Pillow built-ins). The P2.3
+# decoder module contributes ``EXTRA_EXTS`` (HEIC/HEIF/AVIF/RAW family) which
+# are *route-able* even when the optional decoder for a given format isn't
+# installed -- ``open_any`` will then raise ``UnsupportedFormatError`` and
+# the caller's try/except path emits a friendly hint rather than crashing
+# the whole pipeline.
+_BASE_EXTS = {".jpg", ".jpeg", ".png", ".webp", ".bmp", ".tif", ".tiff", ".gif", ".psd"}
+SUPPORTED_EXTS = _BASE_EXTS | EXTRA_EXTS
 
 # 真正"无损"的容器：LSB 位平面在这里才是可信的检测目标。
-# 注意：不在这个集合里的（JPEG / MPO / HEIC / AVIF / WEBP-lossy / JFIF / JP2 / JPS / MPF...）
+# 注意：不在这个集合里的（JPEG / MPO / HEIC / AVIF / WEBP-lossy / JFIF / JP2 / JPS / MPF / RAW...）
 # 一律视为 lossy —— LSB 平面会被量化和反量化的舍入误差搞成接近白噪声，
 # 把白噪声+卡方 P→1 当成"满载隐写"是 Westfeld 1999 论文里就警告过的经典 false positive。
+# RAW 经 rawpy 解 demosaic 后已不可逆，自然进 lossy；HEIC/AVIF 的常见模式都是有损 HEVC/AV1。
 LOSSLESS_FORMATS = {"PNG", "BMP", "TIFF", "TIF", "GIF", "PPM", "PGM", "PSD"}
 
 
@@ -60,7 +70,7 @@ def guess_mime(path: Path) -> str:
 
 
 def safe_open_rgb(path: Path, max_side: int | None = None) -> Image.Image:
-    img = Image.open(path)
+    img = open_any(path)
     img.load()
     if img.mode not in ("RGB", "RGBA"):
         img = img.convert("RGB")

@@ -13,6 +13,8 @@ from typing import Any
 import numpy as np
 from PIL import Image
 
+from .format_decoder import open_any
+
 PROVIDER_KEYWORDS = {
     "OpenAI": ["openai", "chatgpt", "dall-e", "dall\u00b7e", "gpt-4o", "gpt image"],
     "Google": ["google", "gemini", "imagen", "deepmind", "synthid"],
@@ -164,7 +166,7 @@ def _synthid_freq_fingerprint(path: Path) -> dict[str, Any]:
         "carrier_count_used": 0,
     }
     try:
-        img = Image.open(path).convert("RGB")
+        img = open_any(path).convert("RGB")
     except Exception as exc:
         fallback["reason"] = f"图像无法读取: {exc}"
         return fallback

@@ -84,6 +84,9 @@ TARGET = {
     "lsb_steg.png",
     "trailing_zip.png",
     "ai_metadata.png",
+    # P2.3 — modern containers (AVIF native, WebP standard) round-trip
+    "normal_avif.avif",
+    "normal_webp.webp",
 }
 
 
