@@ -24,6 +24,94 @@
 
 ---
 
+## ⚠️ 能力诚实声明（请先看这一段）
+
+为避免误解 / 期望错配，下面把每个模块按"裸环境跑得动 vs. 装依赖才能跑 vs. 启发式信号"三档分类。**绿档可信、黄档需要装东西、橙档只是信号源不是判决器。**
+
+### 🟢 A 档：开箱即用，真实可用（仅需 [requirements.txt](file:///d:/workspace/project/find_image_hide/requirements.txt)）
+
+| 模块 | 文件 | 能力强弱 |
+|---|---|---|
+| 基本信息 + 元数据 | [basic_info.py](file:///d:/workspace/project/find_image_hide/image_forensics/basic_info.py) / [metadata_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/metadata_analysis.py) | 强：EXIF/IPTC/XMP/PNG text、Shutterstock/Getty/AI 产品名关键字命中 |
+| FFT / DCT / LSB / Noise / ELA | [fft_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/fft_analysis.py) / [dct_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/dct_analysis.py) / [lsb_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/lsb_analysis.py) / [noise_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/noise_analysis.py) / [ela.py](file:///d:/workspace/project/find_image_hide/image_forensics/ela.py) | 中-强：经典统计/频域指标，对**朴素 LSB、JPEG 拼接、强压缩异常**敏感 |
+| 隐藏内容提取 | [extraction.py](file:///d:/workspace/project/find_image_hide/image_forensics/extraction.py) | 强：尾部 zip / EOI 后文本 / append 文件可直接检出 |
+| Copy-Move 检测 | [copy_move_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/copy_move_analysis.py) | 中：ORB + 块匹配，**典型 PS 复制粘贴篡改可检出** |
+| pHash 反查 | [phash_match.py](file:///d:/workspace/project/find_image_hide/image_forensics/phash_match.py) | 强（前提：设置 `FORENSICS_PHASH_REFERENCE_DIR`） |
+| AI 来源溯源（元数据线路）| [ai_provenance_analysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/ai_provenance_analysis.py) | 强（前提：图里**还存有**元数据 / C2PA） |
+| 司法级 PDF 报告 | [pdf_report.py](file:///d:/workspace/project/find_image_hide/image_forensics/pdf_report.py) | 强：字节级可重现（仅需 `pip install reportlab`） |
+
+### 🟡 B 档：装上才有，没装会优雅降级（不报错、字段标 SKIPPED）
+
+| 模块 | 需要装 | 不装时表现 |
+|---|---|---|
+| 隐形水印（DwtDct）解码 | `pip install invisible-watermark opencv-python` | `status: UNAVAILABLE` |
+| C2PA pure-Python 校验 | `pip install c2pa-python` | `status: SKIPPED_NO_LIBRARY` |
+| 外部隐写工具聚合 | 系统装 `binwalk` / `zsteg` / `stegoveritas` / `stegseek` 其中之一 | 对应 tool `SKIPPED_NO_TOOL`，**全没装时整模块 UNKNOWN** |
+| 可见水印 OCR | 系统装 `tesseract` 二进制 | OCR 段 SKIPPED，其它模块照跑 |
+
+> 这一档是"用不了"吐槽的主要来源。**这不是假功能，是软依赖**——可以在 [analyzer.py L65-L78](file:///d:/workspace/project/find_image_hide/image_forensics/analyzer.py#L65-L78) 看到所有模块都包了 try/except，缺包返回 UNKNOWN 而不是崩。
+
+### 🟠 C 档：启发式信号源（明确标注 `limitations`）
+
+| 模块 | 真实定位 | 注意事项 |
+|---|---|---|
+| [steganalysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/steganalysis.py) | 卡方 POV / SPA 经典隐写分析 | **对现代自适应隐写（HUGO/WOW/S-UNIWARD）无效**，要靠 B 档外部工具或深度模型 |
+| [ai_heuristics.py](file:///d:/workspace/project/find_image_hide/image_forensics/ai_heuristics.py) | 频域 + 噪声阈值打分 | **不是训练好的判别模型**，对最新生成模型（Flux/Sora 截图/Midjourney v6）准确率没保证 |
+| SynthID 频域探针（在 [analyzer.py L218-L234](file:///d:/workspace/project/find_image_hide/image_forensics/analyzer.py#L218-L234)） | reverse-SynthID 启发式 | Google 没开源真正解码，**权威验证只能走 Google 官方接口** |
+
+---
+
+## ✅ 适合 / ❌ 不适合的使用场景
+
+### ✅ 强烈推荐使用
+
+| 场景 | 推荐理由 |
+|---|---|
+| 取证 / 合规：需要一份"我用 18 个维度都查过，证据链留底"的报告 | [report.json](file:///d:/workspace/project/find_image_hide/image_forensics/analyzer.py#L237-L241) + 字节级可重现 PDF + 中文 evidence 描述，比 SaaS 黑盒分值更有审计价值 |
+| 安全 / CTF：图里藏了 zip / 可执行 / steghide 加密 payload | [extraction.py](file:///d:/workspace/project/find_image_hide/image_forensics/extraction.py) + [steganalysis_external.py](file:///d:/workspace/project/find_image_hide/image_forensics/steganalysis_external.py) 调 binwalk/zsteg/stegseek，**这是最硬的命中场景** |
+| 判别带 C2PA 签名的 AI 图（ChatGPT 出图 / Adobe Firefly / Leica M11-P）| [c2pa_check.py](file:///d:/workspace/project/find_image_hide/image_forensics/c2pa_check.py) 解 manifest → `VERIFIED_AI_GENERATED`，**真·硬证** |
+| 检查 SDXL/SD2 **原图**是否带默认 invisible-watermark | [invisible_watermark_detect.py L136-L283](file:///d:/workspace/project/find_image_hide/image_forensics/invisible_watermark_detect.py#L136-L283) 字典命中 `sdv2/sdxl` 给 HIGH |
+| 反查"洗图"：判断一张图是不是从你本地参考库里改尺寸 / 重压缩出来的 | 设 `FORENSICS_PHASH_REFERENCE_DIR` → [phash_match.py](file:///d:/workspace/project/find_image_hide/image_forensics/phash_match.py) Hamming ≤ 8 命中 |
+| 检测 PS 拼接 / 复制粘贴篡改 | ELA + Copy-Move + Noise 三路同时报警，**这是经典强项** |
+| 完全离线 / 涉密环境 | 100% 本地，不向外发任何请求，源码全开可审计 |
+
+### ❌ 不适合的场景（请用别的工具）
+
+| 场景 | 为什么不适合 | 建议替代 |
+|---|---|---|
+| **判别一张"被微信/小红书转过、剥光元数据"的 AI 图** | 本项目没有训练好的 CNN/ViT 判别模型，[ai_heuristics.py](file:///d:/workspace/project/find_image_hide/image_forensics/ai_heuristics.py) 只是手写阈值；C 档置信度 ~0.4 不足以拍板 | Hive AI / Optic AI-or-Not（SaaS），或自己接 UniversalFakeDetect / NPR 预训练模型 |
+| 现代自适应隐写（HUGO / WOW / S-UNIWARD）检测 | [steganalysis.py](file:///d:/workspace/project/find_image_hide/image_forensics/steganalysis.py) 是 2000s 经典统计法，对自适应隐写几乎无效 | Yedroudj-Net / SRNet / ZhuNet（深度学习 SOTA） |
+| 视频取证 / 反向图搜 | 本项目纯图像，不做视频 / 不做外网图搜 | InVID Verification Plugin |
+| 大规模运营审核（每天百万张过 AI/违规判别）| 启发式 + 重 IO，单图秒级 | 上专门的内容审核 SaaS |
+| 司法磁盘镜像分析 | 本项目是单图取证，不做磁盘 carving | Autopsy / Ghiro |
+
+### 📊 关于"准确率数字"——必须坦白
+
+**本 README 不给任何准确率百分比。** 原因是项目内置了 [tools/datasets/](file:///d:/workspace/project/find_image_hide/tools/datasets) 下的 GenImage mini / CASIA v2 mini / COMOFOD / Chameleon 拉取脚本和 [tools/run_regression.py](file:///d:/workspace/project/find_image_hide/tools/run_regression.py)，但**作者尚未把完整回归报告钉死到仓库里**。任何不在公开数据集上跑过混淆矩阵就报出来的"准确率 95%"都是耍流氓。
+
+如果你要真实数字，请自己跑：
+
+```bash
+python tools/datasets/fetch_genimage_mini.py     # 拉真实 AI 图集
+python tools/datasets/fetch_casia_v2_mini.py     # 拉真实篡改图集
+python tools/run_regression.py                   # 出混淆矩阵
+```
+
+跑完结果会在 [tools/regression_clean_baseline/](file:///d:/workspace/project/find_image_hide/tools/regression_clean_baseline) 下。**作者计划下一步把回归结果作为 CI 产物固化**（见 [docs/ROADMAP.md](file:///d:/workspace/project/find_image_hide/docs/ROADMAP.md)）。
+
+---
+
+## 路线图：如何补 AI 检测短板
+
+`ai_heuristics` 是手写阈值，要让它能稳定打中"被剥光元数据的现代 AI 出图"，唯一硬办法是接入预训练判别模型。候选：
+
+- **NPR (CVPR 2024)**：ResNet50 底座，~100MB 权重，CPU ~200ms/图
+- **UniversalFakeDetect (CVPR 2023)**：CLIP ViT-L/14 底座，~1GB 权重，CPU ~1s/图，泛化更好
+
+接入方式建议走 optional extras（`pip install .[ai]`），保持主包"纯本地、轻量"的定位。目前**未集成**，欢迎 PR。
+
+---
+
 ## 快速开始
 
 ### 依赖
@@ -212,6 +300,55 @@ webapp 启动后会暴露以下 HTTP 接口（仅监听 127.0.0.1）：
 ### 验收
 
 最快路径：装 reportlab → `python webapp.py` → 浏览器跑 demo → 进任意图详情 → 点导出 PDF。完整 8 块验收清单（含字节级可重现性自验脚本）见 [docs/P2.4_ACCEPTANCE.md](file:///d:/workspace/project/find_image_hide/docs/P2.4_ACCEPTANCE.md)。
+
+---
+
+## 作为 Agent Skill 集成（OpenClaw / Hermes / Trae / Claude）
+
+本项目已自带一份标准 **Skill 描述文件**，让 OpenClaw、Hermes、Trae、Claude 等支持 SKILL.md 协议的 Agent 能够把本工具当作一个内置能力直接调用。
+
+- Skill 入口：[.trae/skills/image-forensics-inspector/SKILL.md](file:///d:/workspace/project/find_image_hide/.trae/skills/image-forensics-inspector/SKILL.md)
+- 协议参考：`skill-creator`（frontmatter `name` + `description`，body 是 markdown 文档）
+
+### Skill 路由触发条件（写在 frontmatter `description` 里）
+
+Agent 在以下意图下应自动命中并调用本 Skill：
+
+- "这张图是不是 AI 生成 / 有没有 C2PA"
+- "PNG/JPG 里是不是藏了 zip / 文本 / 可执行 / LSB payload"
+- "这张图是不是被 PS 拼接 / 复制粘贴篡改过"
+- "图上有没有 Shutterstock / Getty / Adobe Firefly 水印"
+- "拿这张图反查我本地的参考图库（pHash）"
+- "出一份字节级可重现的司法级 PDF 报告"
+- 批量给一个文件夹打风险等级（LOW / MEDIUM / HIGH）
+
+### 三种调用模式（Agent 按自身能力挑一种）
+
+| 模式 | 适合谁 | 入口 |
+|---|---|---|
+| **Mode A — CLI** | 任何能 spawn 子进程的 Agent（最稳） | [analyze_image.py](file:///d:/workspace/project/find_image_hide/analyze_image.py)，stdout 直接吐 JSON |
+| **Mode B — Python API** | Python 进程内嵌的 Agent | `from image_forensics.analyzer import analyze_image` / `from image_forensics.batch import analyze_directory` |
+| **Mode C — Local HTTP** | Hermes / 非 Python Agent / 跨进程编排 | [webapp.py](file:///d:/workspace/project/find_image_hide/webapp.py) 提供完整 REST 接口（见上方「HTTP API 速览」） |
+| **Mode D — Demo** | 验收 / 端到端演示 | [demo.py](file:///d:/workspace/project/find_image_hide/demo.py) |
+
+### Agent 必须复述给用户的"诚实约束"
+
+Skill 文档里特意把 Agent 容易越界的几条硬约束写死，避免被滥用作"AI 判官 / 隐写判决器"：
+
+- 不能凭 `ai_heuristics` 拍板"这是 AI 图"——只有 `VERIFIED_AI_GENERATED` / `VERIFIED_AI_EDITED`（C2PA 验证通过）才是硬证；
+- 经典 χ²/SPA 对现代自适应隐写（HUGO/WOW/S-UNIWARD）无效；
+- 没有官方 SynthID 本地解码器；
+- JPEG 上 LSB 置信度自动下调；
+- 本工具只读，不去除水印、不伪造 C2PA。
+
+### 注册到全局（让 Agent 在任意 cwd 都能发现）
+
+默认 Skill 放在项目自身 [.trae/skills/](file:///d:/workspace/project/find_image_hide/.trae/skills) 下，**仅当 Agent 工作区设到本项目时**会被自动发现。如果你希望 OpenClaw / Hermes 等 Agent 在任何工作目录都能调用，把 [image-forensics-inspector/](file:///d:/workspace/project/find_image_hide/.trae/skills/image-forensics-inspector) 整个目录拷贝（或软链接）到对应 Agent 的全局 skills 目录，例如：
+
+- Trae：`%USERPROFILE%\.trae-cn\builtin\global\skills\`
+- 其它 Agent：参考其文档约定的 skills 注册目录
+
+完整 Skill 文档（capability inventory / 输出契约 / 4 条 agent recipe / 安全边界）请直接看 [SKILL.md](file:///d:/workspace/project/find_image_hide/.trae/skills/image-forensics-inspector/SKILL.md)。
 
 ---
 
